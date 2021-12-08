@@ -25,7 +25,7 @@ class DAC_Control_new(EnvExperiment, object):
         ret = app.exec_()
         
         #set dataset on exit    
-        elecs = self.tab_widget.e
+        #elecs = self.tab_widget.e
 
         #label electrodes (for testing purposes)        
         '''
@@ -34,12 +34,12 @@ class DAC_Control_new(EnvExperiment, object):
         '''
 
         #mutate dataset
-        for c in range(len(elecs)):
-            self.mutate_dataset(key="dac_voltages", index=c, value=elecs[c])
+        #for c in range(len(elecs)):
+        #    self.mutate_dataset(key="dac_voltages", index=c, value=elecs[c])
 
         #get/print data set (for testing purposes)
-        this_dataset = self.get_dataset(key="dac_voltages")
-        print("this is a dataset:", this_dataset)        
+        #this_dataset = self.get_dataset(key="dac_voltages")
+        #print("this is a dataset:", this_dataset)        
         
         #exit app
         sys.exit(ret)
@@ -256,7 +256,8 @@ class MyTabWidget(QWidget):
             text = i.text() or "0"
             self.el_list.append(float(text))
         self.e=self.el_list
-        print(self.e)
+        #print(self.e)
+        parent.mutate_dataset(key="dac_voltages", index=0, value=1)
 
     def on_multipoles_click(self):
         # Create multiple list of floats
