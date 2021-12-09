@@ -2,68 +2,20 @@ from artiq.experiment import *
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QMainWindow, QFileDialog, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QLabel, QGridLayout, QLineEdit, QPlainTextEdit
-
+from artiq.applets.simple import SimpleApplet
 import os
 import sys
 
-class DAC_Control_new(EnvExperiment, object):
-#class DAC_Control():
-  
-    def build(self):
-        pass
-    
-    def prepare(self):
-        self.set_dataset(key="dac_voltages", value=np.zeros(21), broadcast=True)
-        pass
- 
-    def run(self):       
-        #launch GUI
-        app = QtWidgets.QApplication(sys.argv)
-        MainWindow = QtWidgets.QMainWindow()
-        self.setupUi(MainWindow) 
-        MainWindow.show()
-        ret = app.exec_()
+class MyTabWidget(QtWidgets.QSplitter):
+     
+    def __init__(self):
+        QtWidgets.QSplitter.__init__(self)
+        self.resize(600, 200)
+        self.setWindowTitle("XY/Histogram"):
         
-        #set dataset on exit    
-        elecs = self.tab_widget.e
-
-        #label electrodes (for testing purposes)        
-        '''
-        self.voltages = {'bl1': elecs[0], 'bl2': elecs[1], 'bl3': elecs[2], 'bl4': elecs[3], 'bl5': elecs[4], 'br1': elecs[5], 'br2':elecs[6], 'br3':elecs[7], 'br4':elecs[8], 'br5': elecs[9], 'tl1':elecs[10], 'tl2':elecs[11], 'tl3':elecs[12], 'tl4':elecs[13], 'tl5':elecs[14], 'tr1':elecs[15], 'tl2':elecs[16], 'tl3':elecs[17], 'tl4':elecs[18], 'tl5':elecs[19], 'tg':elecs[20] }
-        print("this is a test:", self.voltages)        
-        '''
-
-        #mutate dataset
-        for c in range(len(elecs)):
-            self.mutate_dataset(key="dac_voltages", index=c, value=elecs[c])
-
-        #get/print data set (for testing purposes)
-        this_dataset = self.get_dataset(key="dac_voltages")
-        print("this is a dataset:", this_dataset)        
-        
-        #exit app
-        sys.exit(ret)
-        
-    def setupUi(self, win):
-        self.title = 'DAC Control'
-        self.left = 0
-        self.top = 0
-        self.width = 600
-        self.height = 200
-        win.setWindowTitle(self.title)
-        win.setGeometry(self.left, self.top, self.width, self.height)
-        self.tab_widget = MyTabWidget(win)
-        win.setCentralWidget(self.tab_widget)
-       
-       
-# Creating tab widgets
-class MyTabWidget(QWidget):
-    
-    def __init__(self, parent):
-        super(QWidget, self).__init__(parent)
         self.layout = QVBoxLayout(self)
         self.setup_UI()
-        self.e=np.full(21, 0.0)    
+        #self.e=np.full(21, 0.0)    
     
     def setup_UI(self):
   
@@ -100,10 +52,10 @@ class MyTabWidget(QWidget):
         self.electrodes = []
         
         #[values (from list), x-coord (label), x-coord (entrtyBox), y-coord (first entry)]
-        self.bl_electrodes = [0,0,1,4] 
-        self.br_electrodes = [1,4,5,4]
-        self.tl_electrodes = [3,0,1,10]
-        self.tr_electrodes = [4,4,5,10]
+        self.bl_electrodes = [0,0,1,0] 
+        self.br_electrodes = [1,4,5,0]
+        self.tl_electrodes = [3,0,1,6]
+        self.tr_electrodes = [4,4,5,6]
 
         
         #electrode grid
@@ -117,12 +69,12 @@ class MyTabWidget(QWidget):
         
             for i in range(len(self.ELECTRODES[el_values])):      
                 textbox = QLineEdit(self)
-                grid1.addWidget(textbox,ycoord-i,xcoord_entry,1,1)
+                grid1.addWidget(textbox,ycoord+i,xcoord_entry,1,1)
                 textbox.setPlaceholderText("0.0")
                 self.electrodes.append(textbox)
                 
                 label = QLabel(self.ELECTRODES[el_values][i], self)
-                grid1.addWidget(label,ycoord-i,xcoord_label,1,1)
+                grid1.addWidget(label,ycoord+i,xcoord_label,1,1)
           
         #spacing
         label_gap = QLabel('', self)
@@ -131,6 +83,20 @@ class MyTabWidget(QWidget):
         #tg
         textbox_tg = QLineEdit(self)
         grid1.addWidget(textbox_tg,1,3,1,1)
+
+        # Add Background color
+        #testcolour = QtGui.QColor(0, 100, 0)
+        #mycolor = QColor(color.red(), color.green(), color.blue(), 200)
+ 	
+        #rgb = 255, 0, 0
+        #mycolor_hex = "#" + "%02x%02x%02x" % rgb
+        #print(mycolor_hex)
+       
+       # entry = textbox_tg.text() or "0"
+       # value = float(entry)
+       # if value>0:
+       #     textbox_tg.setStyleSheet("background-color: #ff0000 ")#;  border: 1px solid black;")
+
         textbox_tg.setPlaceholderText("0.0")
         self.electrodes.append(textbox_tg)
         label_tg = QLabel(self.ELECTRODES[2][0], self)
@@ -256,8 +222,7 @@ class MyTabWidget(QWidget):
             text = i.text() or "0"
             self.el_list.append(float(text))
         self.e=self.el_list
-        #print(self.e)
-        #parent.mutate_dataset(key="dac_voltages", index=0, value=1)
+        print(self.e)
 
     def on_multipoles_click(self):
         # Create multiple list of floats
@@ -269,15 +234,15 @@ class MyTabWidget(QWidget):
          # Calculate and print electrode values
         self.m=np.array([self.mul_list])
         self.e = np.matmul(self.m, self.C_Matrix_np)
-            
+	        
         for i in range(len(self.e[0])):
-            if self.e[0][i]>=10:
-                print(f'warning: voltage {round(self.e[0][i],2)}  exceeds limit')
-                self.e[0][i]=10
-            elif self.e[0][i]<=-10:
-                print(f'warning: voltage {round(self.e[0][i],2)} exceeds limit')
-                self.e[0][i]=-10
-    
+            if self.e[0][i]>=20:
+                print('warning: voltage exceeds limit')
+                self.e[0][i]=20
+            elif self.e[0][i]<=-20:
+                print('warning: voltage exceeds limit')
+                self.e[0][i]=-20 
+	
         curr = 0
         for label in self.all_labels:
             if curr == 10:
@@ -287,17 +252,15 @@ class MyTabWidget(QWidget):
             curr+=1
             
         self.label0_tg.setText(str(round(self.e[0][10],2)))
+        #self.label0_p2.setText(str(round(self.e[21][0],3)))
             
         self.e = self.e[0].tolist()
         self.e.append(self.e.pop(10))        
-         
-        for i in range(len(self.e)):
-            self.e[i]=round(self.e[i],2)
-    
-        print(self.e)
 
-#running outside artiq shell
-'''
-test = DAC_Control()
-test.run()
-'''
+def main():
+    test = SimpleApplet(MyTabWidget)
+    #applet.add_dataset("e", "electrode")
+    test.run()
+
+if __name__ == "__main__":
+    main()

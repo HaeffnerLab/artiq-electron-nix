@@ -15,18 +15,22 @@ class Run_UpdateVoltages(EnvExperiment):
     def build(self):
         self.setattr_device('core')
         self.setattr_device('zotino0')
+
+    def prepare(self):
+        self.voltages = self.get_dataset(key="dac_voltages")
+        print(self.voltages)
+        print("updating voltages")
     
     @kernel
     def run(self):
         self.core.reset()
-        self.zotino0.init()
-        
-        voltages = self.get_dataset(key="dac_voltages")
-        
+        self.zotino0.init()        
       
-        for pin in range(len(voltages)):
+        for pin in range(len(self.voltages)):
             delay(500*us)
-            self.zotino0.write_dac(pin,voltages[pin])
+            self.zotino0.write_dac(pin,self.voltages[pin])
+
+        self.zotino0.load()
         
         #test first pins
         '''

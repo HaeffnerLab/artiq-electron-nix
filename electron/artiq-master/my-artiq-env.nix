@@ -41,6 +41,8 @@ in
       #pkgs.spyder
       #pkgs.R
       #pkgs.julia
+      pkgs.qt5.full
+      pkgs.qtcreator
     ];
     
     #QT_PLUGIN_PATH="{qt5.qtbase.bin}/lib/qt-${qt5.qtbase.version}/plugins";
