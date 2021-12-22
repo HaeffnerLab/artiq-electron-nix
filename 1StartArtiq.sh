@@ -1,4 +1,5 @@
 #!/bin/bash
+##!/usr/bin/env nix-shell
 
 # Start artiq_master
 cd electron/artiq-master 
