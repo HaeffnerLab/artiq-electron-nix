@@ -16,13 +16,42 @@ import sys
 # Lets user use the gui to update the dataset and set dac voltages after click on set voltages button
 # '''
 
+'''
+    elec_dict = {
+        'bl1': channelConfiguration(13, trapElectrodeNumber='bl1'),
+        'bl2': channelConfiguration(15, trapElectrodeNumber='bl2'),
+        'bl3': channelConfiguration(17, trapElectrodeNumber='bl3'),
+        'bl4': channelConfiguration(19, trapElectrodeNumber='bl4'),
+        'bl5': channelConfiguration(21, trapElectrodeNumber='bl5'), 
+        'br1': channelConfiguration(22, trapElectrodeNumber='br1'),
+        'br2': channelConfiguration( 7, trapElectrodeNumber='br2'),
+        'br3': channelConfiguration( 5, trapElectrodeNumber='br3'),
+        'br4': channelConfiguration( 3, trapElectrodeNumber='br4'),
+        'br5': channelConfiguration( 1, trapElectrodeNumber='br5'),
+        't0':  channelConfiguration( 0, trapElectrodeNumber='t0'),
+        'tl1': channelConfiguration( 24, trapElectrodeNumber='tl1'),
+        'tl2': channelConfiguration( 2, trapElectrodeNumber='tl2'),
+        'tl3': channelConfiguration(26, trapElectrodeNumber='tl3'),
+        'tl4': channelConfiguration(28, trapElectrodeNumber='tl4'),
+        'tl5': channelConfiguration(30, trapElectrodeNumber='tl5'),
+        'tr1': channelConfiguration( 9, trapElectrodeNumber='tr1'), 
+        'tr2': channelConfiguration(20, trapElectrodeNumber='tr2'),
+        'tr3': channelConfiguration(18, trapElectrodeNumber='tr3'),
+        'tr4': channelConfiguration(16, trapElectrodeNumber='tr4'),
+        'tr5': channelConfiguration(14, trapElectrodeNumber='tr5'),
+        'b0' : channelConfiguration(11, trapElectrodeNumber='b0'),
+        }
+
+'''
+
+
 class DummyEnv(HasEnvironment):
     def build(self):
         self.setattr_device('core')
         self.setattr_device('zotino0')
 
     def prepare(self):
-        self.set_dataset(key="dac_voltages", value=np.zeros(21), broadcast=True)
+        self.set_dataset(key="dac_voltages", value=np.zeros(22), broadcast=True)
     
     def launch_GUI(self):       
         #launch GUI
@@ -46,16 +75,26 @@ class DummyEnv(HasEnvironment):
         self.tab_widget = MyTabWidget(self,win)
         win.setCentralWidget(self.tab_widget)
 
+
+
     @ kernel
     def set_dac_voltages(self,dac_vs):
+
+
+        # electrodes: [bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,...,tr5,t0,b0]
+        pins=[13,15,17,19,21,22,7,5,3,1,24,2,26,28,30,9,20,18,16,14,0,11]
+
+
         self.core.reset()
         # self.core.break_realtime()
         self.zotino0.init()
         self.core.break_realtime() 
-        for pin in range(len(dac_vs)):
+        for pin in range(21):
             delay(500*us)
-            self.zotino0.write_dac(pin,dac_vs[pin])       
+            self.zotino0.write_dac(pins[pin],dac_vs[pin]) 
+            #i=i+1     
         self.zotino0.load()
+
 
     # def get_artiq_dataset(self,k):
     #     delay(1000*us)
@@ -77,11 +116,12 @@ class MyTabWidget(HasEnvironment,QWidget):
     def mutate_dataset(self,key,index,value):
         self.HasEnvironment.mutate_dataset(key=key, index=index, value=value)
 
-    # def get_artiq_dataset(self,k):
-        # self.HasEnvironment.get_artiq_dataset(k)
-
     def set_dac_voltages(self,dac_vs):
         self.HasEnvironment.set_dac_voltages(dac_vs)
+
+
+    # def get_artiq_dataset(self,k):
+        # self.HasEnvironment.get_artiq_dataset(k)
 
     # def delay(self,time_in_us):
         # self.HasEnvironment.delay_kernel(time_in_us)
@@ -106,17 +146,20 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         grid1 = QGridLayout()  
         self.ELECTRODES = []  # Labels for text entry
-        for n in ['tl', 'tr', 'tg', 'bl', 'br']:
+        for n in ['tl', 'tr', 't0', 'bl', 'br', 'b0']:
             self.electrode_sec = [] #electrode sections
-            if n=='tg':
-                self.electrode_sec.append(n)
+            if n=='t0' or n=='b0':
+                ei = n + ":"
+                self.electrode_sec.append(ei)
             else:
                 for i in range(1,6):
                     ei = n + f'{i}:'
                     self.electrode_sec.append(ei)
             self.ELECTRODES.append(self.electrode_sec)
-        self.ELECTRODES.append('tg:')
-        self.ELECTRODES.append('p2:')
+        self.ELECTRODES.append('t0:')
+        self.ELECTRODES.append('b0:')
+
+        print(self.ELECTRODES)
 
         self.electrodes = []
         
@@ -149,13 +192,21 @@ class MyTabWidget(HasEnvironment,QWidget):
         label_gap = QLabel('', self)
         grid1.addWidget(label_gap,5,1,1,1)
         
-        #tg
-        textbox_tg = QLineEdit(self)
-        grid1.addWidget(textbox_tg,1,3,1,1)
-        textbox_tg.setPlaceholderText("0.0")
-        self.electrodes.append(textbox_tg)
-        label_tg = QLabel(self.ELECTRODES[2][0], self)
-        grid1.addWidget(label_tg,1,2,1,1)
+        #t0
+        textbox_t0 = QLineEdit(self)
+        grid1.addWidget(textbox_t0,1,3,1,1)
+        textbox_t0.setPlaceholderText("0.0")
+        self.electrodes.append(textbox_t0)
+        label_t0 = QLabel(self.ELECTRODES[2][0], self)
+        grid1.addWidget(label_t0,1,2,1,1)
+
+        #b0
+        textbox_b0 = QLineEdit(self)
+        grid1.addWidget(textbox_b0,7,3,1,1)
+        textbox_b0.setPlaceholderText("0.0")
+        self.electrodes.append(textbox_b0)
+        label_b0 = QLabel(self.ELECTRODES[5][0], self)
+        grid1.addWidget(label_b0,7,2,1,1)
 
         #ad textbox color
         for el in self.electrodes:
@@ -206,14 +257,22 @@ class MyTabWidget(HasEnvironment,QWidget):
         label_gap = QLabel('', self)
         grid2.addWidget(label_gap,5,1,1,1)
         
-        #tg
-        label_tg = QLabel(self.ELECTRODES[2][0], self)
-        grid2.addWidget(label_tg,1,2,1,1)
-        self.label0_tg = QLabel('0', self)
-        self.label0_tg.setStyleSheet("background-color:yellow;  border: 1px solid black;")
-        grid2.addWidget(self.label0_tg,1,3,1,1)
+        #t0
+        label_t0 = QLabel(self.ELECTRODES[2][0], self)
+        grid2.addWidget(label_t0,1,2,1,1)
+        self.label0_t0 = QLabel('0', self)
+        self.label0_t0.setStyleSheet("background-color:yellow;  border: 1px solid black;")
+        grid2.addWidget(self.label0_t0,1,3,1,1)
+
         
-       
+        #b0
+        label_b0 = QLabel(self.ELECTRODES[5][0], self)
+        grid2.addWidget(label_b0,7,2,1,1)
+        self.label0_b0 = QLabel('0', self)
+        self.label0_b0.setStyleSheet("background-color:yellow;  border: 1px solid black;")
+        grid2.addWidget(self.label0_b0,7,3,1,1)
+        
+
         #spacing  
         label_gap = QLabel('          ', self)
         grid2.addWidget(label_gap,1,6,1,1)
@@ -273,12 +332,12 @@ class MyTabWidget(HasEnvironment,QWidget):
             line_list = stripped_line.split()
             self.list_of_lists.append(float(line_list[0]))
             
-        # create list of values from size 21*9 C-file
+        # create list of values from size 22*9 C-file
         curr_elt = 0
         self.C_Matrix = []
         for i in range(9):
             C_row = []
-            for i in range(21):
+            for i in range(22):
                 C_row.append(self.list_of_lists[curr_elt])
                 curr_elt+=1
             self.C_Matrix.append(C_row) 
@@ -302,6 +361,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         # self.delay(10000)
         self.set_dac_voltages(self.e)
         print("on_voltage_click has updated voltages")
+        print(self.e)
 
         #print(self.e)
         # dummy_object = HasEnvironment()
@@ -316,7 +376,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             
          # Calculate and print electrode values
         self.m=np.array([self.mul_list])
-        self.e = np.matmul(self.m, self.C_Matrix_np)
+        self.e=np.matmul(self.m, self.C_Matrix_np)
             
         for i in range(len(self.e[0])):
             if self.e[0][i]>=10:
@@ -332,13 +392,15 @@ class MyTabWidget(HasEnvironment,QWidget):
                 curr+=1          
             label.setText(str(round(self.e[0][curr],3)))
             curr+=1
-        self.label0_tg.setText(str(round(self.e[0][10],3)))    
+        #self.label0_t0.setText(str(round(self.e[0][10],3)))
+        self.label0_t0.setText(str(round(self.e[0][20],3)))
+        self.label0_b0.setText(str(round(self.e[0][21],3)))    
         
         self.e = self.e[0].tolist()
-        self.e.append(self.e.pop(10))       
+        #self.e.append(self.e.pop(10))      
         for i in range(len(self.e)):
             self.e[i]=round(self.e[i],3)
-    
+
         print(self.e)
         for c in range(len(self.e)):
             self.mutate_dataset("dac_voltages", c, self.e[c])
@@ -367,7 +429,6 @@ class MyTabWidget(HasEnvironment,QWidget):
             entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
 
 
-
 class DAC_Control(DummyEnv, EnvExperiment):#, object):
     def build(self):
         DummyEnv.build(self)
@@ -380,15 +441,18 @@ class DAC_Control(DummyEnv, EnvExperiment):#, object):
     
     @kernel
     def run(self):
+
+
         self.core.reset()
         self.zotino0.init()
-        initial_dataset = np.zeros(21)
+        initial_dataset = np.zeros(22)
         for i in range(10):
             # delay(10*s)
             self.voltages = self.get_dataset(key="dac_voltages")
             print(self.voltages)
             if not np.array_equal(initial_dataset,self.voltages):
                 for pin in range(len(self.voltages)):
+        
                     delay(500*us)
                     self.zotino0.write_dac(pin,self.voltages[pin])       
                 self.zotino0.load()
