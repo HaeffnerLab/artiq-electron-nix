@@ -25,7 +25,8 @@ in
         # interesting for your research. Here are some examples:
         #ps.pandas
         ps.numpy
-	#ps.PyQt5
+        ps.vxi11
+        #ps.PyQt5
         #ps.scipy
         #ps.numba
         (ps.matplotlib.override { enableQt = true; })
