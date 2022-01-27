@@ -67,8 +67,8 @@ class Electron(HasEnvironment):
         self.title = 'Electron'
         self.left = 0
         self.top = 0
-        self.width = 600
-        self.height = 200
+        self.width = 1200 # 600
+        self.height = 400 # 200
         win.setWindowTitle(self.title)
         win.setGeometry(self.left, self.top, self.width, self.height)
         self.tab_widget = MyTabWidget(self,win)
