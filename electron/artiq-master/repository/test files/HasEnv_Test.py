@@ -51,7 +51,8 @@ class DummyEnv(HasEnvironment):
         self.setattr_device('zotino0')
 
     def prepare(self):
-        self.set_dataset(key="dac_voltages", value=np.zeros(22), broadcast=True)
+        self.ne = 22 # number of electrodes
+        self.set_dataset(key="dac_voltages", value=np.zeros(self.ne), broadcast=True)
     
     def launch_GUI(self):       
         #launch GUI
@@ -87,7 +88,7 @@ class DummyEnv(HasEnvironment):
         # self.core.break_realtime()
         self.zotino0.init()
         self.core.break_realtime() 
-        for pin in range(21):
+        for pin in range(self.ne):
             delay(500*us)
             self.zotino0.write_dac(pins[pin],dac_vs[pin]) 
             #i=i+1     
@@ -108,7 +109,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.layout = QVBoxLayout(self)
         self.HasEnvironment = Env
         self.setup_UI()
-        self.e=np.full(21, 0.0)    
+        self.ne = 22
+        self.e=np.full(self.ne, 0.0)    
     
 
     def mutate_dataset(self,key,index,value):
@@ -334,7 +336,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.C_Matrix = []
         for i in range(9):
             C_row = []
-            for i in range(22):
+            for i in range(self.ne):
                 C_row.append(self.list_of_lists[curr_elt])
                 curr_elt+=1
             self.C_Matrix.append(C_row) 
@@ -391,7 +393,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             self.C_Matrix = []
             for i in range(9):
                 C_row = []
-                for i in range(22):
+                for i in range(self.ne):
                     C_row.append(self.list_of_lists[curr_elt])
                     curr_elt+=1
                 self.C_Matrix.append(C_row) 
@@ -493,7 +495,7 @@ class DAC_Control(DummyEnv, EnvExperiment):#, object):
 
         self.core.reset()
         self.zotino0.init()
-        initial_dataset = np.zeros(22)
+        initial_dataset = np.zeros(self.ne)
         for i in range(10):
             # delay(10*s)
             self.voltages = self.get_dataset(key="dac_voltages")
