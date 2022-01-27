@@ -179,13 +179,14 @@ class MyTabWidget(HasEnvironment,QWidget):
             ycoord = e[3]
             
         
-            for i in range(len(self.ELECTRODES[el_values])):      
-                textbox = QLineEdit(self)
-                grid1.addWidget(textbox,ycoord-i,xcoord_entry,1,1)
-                textbox.setPlaceholderText("0.0")
-                self.electrodes.append(textbox)
-                
-                label = QLabel(self.ELECTRODES[el_values][i], self)
+            for i in range(len(self.ELECTRODES[el_values])):
+                for i in range(len(self.ELECTRODES[el_values])):
+                spin = QtWidgets.QDoubleSpinBox(self)
+                spin.setRange(-10,10)
+                spin.setSingleStep(0.1)
+                grid1.addWidget(spin,ycoord-i,xcoord_entry,1,1)
+                self.electrodes.append(spin)
+                label = QLabel('       '+self.ELECTRODES[el_values][i], self)
                 grid1.addWidget(label,ycoord-i,xcoord_label,1,1)
           
         #spacing
@@ -193,22 +194,24 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid1.addWidget(label_gap,5,1,1,1)
         
         #t0
-        textbox_t0 = QLineEdit(self)
-        grid1.addWidget(textbox_t0,1,3,1,1)
-        textbox_t0.setPlaceholderText("0.0")
-        self.electrodes.append(textbox_t0)
-        label_t0 = QLabel(self.ELECTRODES[2][0], self)
-        grid1.addWidget(label_t0,1,2,1,1)
+        spin_t0 = QtWidgets.QDoubleSpinBox(self)
+        spin_t0.setRange(-10,10)
+        spin_t0.setSingleStep(0.1)
+        grid1.addWidget(spin_t0,1,3,1,1)
+        self.electrodes.append(spin_t0)
+        label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
+        grid1.addWidget(label_t0,1,2)
 
         #b0
-        textbox_b0 = QLineEdit(self)
-        grid1.addWidget(textbox_b0,7,3,1,1)
-        textbox_b0.setPlaceholderText("0.0")
-        self.electrodes.append(textbox_b0)
-        label_b0 = QLabel(self.ELECTRODES[5][0], self)
-        grid1.addWidget(label_b0,7,2,1,1)
+        spin_b0 = QtWidgets.QDoubleSpinBox(self)
+        spin_b0.setRange(-10,10)
+        spin_b0.setSingleStep(0.1)
+        grid1.addWidget(spin_b0,7,3,1,1)
+        self.electrodes.append(spin_b0)
+        label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
+        grid1.addWidget(label_b0,7,2,1,1)        
 
-        #ad textbox color
+        # add textbox color
         for el in self.electrodes:
             el.editingFinished.connect(lambda el=el: self.change_background(el))
        
@@ -281,12 +284,13 @@ class MyTabWidget(HasEnvironment,QWidget):
         MULTIPOLES = ['Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']
         self.multipoles = []
         for i in range(len(MULTIPOLES)):  
-            textbox = QLineEdit(self)
-            grid2.addWidget(textbox,i,8,1,1)
-            textbox.setPlaceholderText("0.0")
-            self.multipoles.append(textbox)
+            spin = QtWidgets.QDoubleSpinBox(self)
+            spin.setRange(-10,10)
+            spin.setSingleStep(0.1)
+            grid2.addWidget(spin,i,8,1,1)
+            self.multipoles.append(spin)
             label = QLabel(MULTIPOLES[i], self)
-            grid2.addWidget(label,i,7,1,1)
+            grid2.addWidget(label,i,7,1,1)  
     
         # add voltage button
         v_button = QPushButton('Set Multipole Values', self)
@@ -298,12 +302,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         c_button.clicked.connect(self.openFileDialog)
         grid2.addWidget(c_button, 1, 9)
         self.tab2.setLayout(grid2)
-      
-  
+       
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
-        self.setLayout(self.layout)
-        
+        self.setLayout(self.layout)  
         
     def openFileDialog(self):
         '''
@@ -342,6 +344,16 @@ class MyTabWidget(HasEnvironment,QWidget):
             self.C_Matrix.append(C_row) 
             
         self.C_Matrix_np = np.array(self.C_Matrix)
+    
+    def keyPressEvent(self, qKeyEvent):
+        print(qKeyEvent.key())
+        if qKeyEvent.key() == QtCore.Qt.Key_Return:
+            if self.tabs.currentIndex() == 0:
+                self.on_voltage_click()
+            elif self.tabs.currentIndex() == 1:
+                self.on_multipoles_click()
+        else:
+            super().keyPressEvent(qKeyEvent)
                
             
     def on_voltage_click(self):
@@ -462,7 +474,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         if entry.text() == '':
             pass
         else:
-            entry.setPlaceholderText("0.0")
             val = float(entry.text())
             a = np.abs(val/10)
 
