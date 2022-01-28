@@ -488,7 +488,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
 
 
-class DAC_Control(DummyEnv, EnvExperiment):#, object):
+class DAC_Control_test(DummyEnv, EnvExperiment):#, object):
     def build(self):
         DummyEnv.build(self)
         # self.setattr_device('core')
