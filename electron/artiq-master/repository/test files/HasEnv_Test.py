@@ -178,9 +178,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             xcoord_entry = e[2]
             ycoord = e[3]
             
-        
             for i in range(len(self.ELECTRODES[el_values])):
-                for i in range(len(self.ELECTRODES[el_values])):
                 spin = QtWidgets.QDoubleSpinBox(self)
                 spin.setRange(-10,10)
                 spin.setSingleStep(0.1)
