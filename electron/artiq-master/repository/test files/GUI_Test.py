@@ -13,6 +13,10 @@ import os
 import sys
 
 
+# parameter tab: should be able to write to dataset "parameter", when saving the data should also save this parameter dataset
+
+
+
 class Electron(HasEnvironment):
     def build(self):
         self.setattr_device('core')
@@ -32,7 +36,7 @@ class Electron(HasEnvironment):
         self.setattr_argument('number_of_datapoints', NumberValue(default=1000,unit=' ',scale=1,ndecimals=0,step=1)) #how many data points on the plot
         # self.setattr_argument('t_delay', NumberValue(default=600,unit='ns',scale=1,ndecimals=0,step=1)) # the delay between the extraction pulse and the MCP signal
         # self.setattr_argument('time_window_width', NumberValue(default=100,unit='ns',scale=1,ndecimals=0,step=1)) # width of the detection time window
-        # self.setattr_device('scheduler') # scheduler used
+        self.setattr_device('scheduler') # scheduler used
 
         # pulse counting:
         self.setattr_argument('time_count', NumberValue(default=1000,unit='number of counts',scale=1,ndecimals=0,step=1)) #how many indices you have in time axis
@@ -184,12 +188,6 @@ class Electron(HasEnvironment):
         print(self.get_dataset(key=k))
         return self.get_dataset(key=k)
 
-
-    
-
-
-
-
 import vxi11
 import matplotlib.pyplot as plt
 # Control the rigol to give out extraction pulse
@@ -236,14 +234,6 @@ class rigol():
  
         return
 
-
-    '''
-    rigol =  rigol()
-    # parameters for the Rigol waveforms
-    pulse_width_ej = 20.E-9
-    pulse_delay_ej = 2.E-9
-    rigol.run(pulse_width_ej, pulse_delay_ej)
-    '''
 
 # Creating tab widgets
 class MyTabWidget(HasEnvironment,QWidget):
@@ -292,7 +282,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         # Add tabs
         self.tabs.addTab(self.tab1, "ELECTRODES")
         self.tabs.addTab(self.tab2, "MULTIPOLES")
-        self.tabs.addTab(self.tab3, "Main Experiment")
+        self.tabs.addTab(self.tab3, "PARAMETERS")
+        self.tabs.addTab(self.tab4, "Main Experiment")
         
   
         '''
@@ -416,15 +407,15 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
         #t0
-        label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
+        label_t0 = QLabel('           '+self.ELECTRODES[2][0], self)
         grid2.addWidget(label_t0,1,2,1,1)
         self.label0_t0 = QLabel('0.00', self)
         self.label0_t0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
         grid2.addWidget(self.label0_t0,1,3,1,1)
 
         
-        #b0
-        label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
+        #b0 
+        label_b0 = QLabel('           '+self.ELECTRODES[5][0], self)
         grid2.addWidget(label_b0,7,2,1,1)
         self.label0_b0 = QLabel('0.00', self)
         self.label0_b0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
@@ -460,7 +451,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
         '''
-        MAIN EXPERIMENT TAB
+        EXPERIMENT PARAMETER TAB
         '''
         grid3 = QGridLayout() #make grid layout
         
@@ -516,11 +507,160 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid3.setRowStretch(4, 1)
         self.tab3.setLayout(grid3)
 
+
+
+        '''
+        MAIN EXPERIMENT TAB
+        '''
+        grid4 = QGridLayout() #make grid layout
+        
+        self.parameter_list = []  
+        #create parameter text entry boxes
+        PARAMETERS1 = ['Load time (us):', 'Wait time (us):', 'Delay time (ns):','Time window width (ns):' ]
+        DEFAULTS1 = [100,100,600,100] # default values
+        for i in range(len(PARAMETERS1)):  
+            spin = QtWidgets.QSpinBox(self)
+            spin.setRange(0,100000)
+            spin.setSingleStep(10)
+            spin.setValue(DEFAULTS1[i]) # set default values
+            grid4.addWidget(spin,i+13,1,1,1)
+            self.parameter_list.append(spin)
+            label = QLabel('    '+PARAMETERS1[i], self)
+            grid4.addWidget(label,i+13,0,1,1)
+          
+        #spacing
+        label_gap = QLabel('', self)
+        grid4.addWidget(label_gap,0,2,1,2)
+
+
+        PARAMETERS2 = ['Pulse counting time (ms):', 'Trigger level (V):', '# Repetitions:', '# Datapoints:']
+        DEFAULTS2 = [500,0.3,1000,1000] # default values
+        for i in range(len(PARAMETERS2)):
+            if i == 1:
+                spin = QtWidgets.QDoubleSpinBox(self)
+                spin.setRange(0,10)
+                spin.setSingleStep(0.01)
+                spin.setValue(DEFAULTS2[i]) # set default values
+                grid4.addWidget(spin,i+13,5,1,1)
+                self.parameter_list.append(spin)
+                label = QLabel('    '+PARAMETERS2[i], self)
+                grid4.addWidget(label,i+13,4,1,1)
+            else:
+                spin = QtWidgets.QSpinBox(self)
+                spin.setRange(0,100000)
+                spin.setSingleStep(10)
+                spin.setValue(DEFAULTS2[i]) # set default values
+                self.parameter_list.append(spin)
+                grid4.addWidget(spin,i+13,5,1,1)
+                label = QLabel('    '+PARAMETERS2[i], self)
+                grid4.addWidget(label,i+13,4,1,1)        
+    
+        #[values (from list), x-coord (label), x-coord (entrtyBox), y-coord (first entry)]
+        self.bl_electrodes0 = [0,0,1,4] 
+        self.br_electrodes0 = [1,4,5,4]
+        self.tl_electrodes0 = [3,0,1,10]
+        self.tr_electrodes0 = [4,4,5,10]
+
+        self.all_labels =[]        
+
+        #electrode grid
+        for e in [self.tl_electrodes0, self.tr_electrodes0, self.bl_electrodes0, self.br_electrodes0]:            
+            
+            el_values = e[0]
+            xcoord_label = e[1]
+            xcoord_entry = e[2]
+            ycoord = e[3]
+            
+            for i in range(len(self.ELECTRODES[el_values])):      
+                label = QLabel('       '+ self.ELECTRODES[el_values][i], self)
+                grid4.addWidget(label,ycoord-i,xcoord_label, 1,1)
+                label0 = QLabel('0.00', self)
+                self.all_labels.append(label0)
+                label0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+                grid4.addWidget(label0,ycoord-i,xcoord_entry,1,1)
+          
+        #spacing
+        label_gap = QLabel('', self)
+        grid4.addWidget(label_gap,5,1,1,1)
+
+
+        #t0
+        label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
+        grid4.addWidget(label_t0,1,2,1,1)
+        self.label0_t0 = QLabel('0.00', self)
+        self.label0_t0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+        grid4.addWidget(self.label0_t0,1,3,1,1)
+
+        
+        #b0
+        label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
+        grid4.addWidget(label_b0,7,2,1,1)
+        self.label0_b0 = QLabel('0.00', self)
+        self.label0_b0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+        grid4.addWidget(self.label0_b0,7,3,1,1)    
+
+        #spacing  
+        label_gap = QLabel('          ', self)
+        grid4.addWidget(label_gap,1,6,1,1)
+
+        #spacing  
+        label_gap = QLabel('          ', self)
+        grid4.addWidget(label_gap,11,6,2,1)
+    
+        #create multipole text entry boxes
+        MULTIPOLES = ['Ex:', 'Ey:', 'Ez:', 'U1:', 'U2:', 'U3:', 'U4:', 'U5:', 'U6:']
+        self.multipoles = []
+        for i in range(len(MULTIPOLES)):  
+            spin = QtWidgets.QDoubleSpinBox(self)
+            spin.setRange(-10,10)
+            spin.setSingleStep(0.01)
+            grid4.addWidget(spin,i,8,1,1)
+            self.multipoles.append(spin)
+            label = QLabel(MULTIPOLES[i], self)
+            grid4.addWidget(label,i,7,1,1)  
+    
+        # add extraction button
+        v_button = QPushButton('Initialize Rigol', self)
+        v_button.clicked.connect(self.run_rigol_extraction)
+        grid4.addWidget(v_button, 10+2, 8)
+
+        # add voltage button
+        v_button = QPushButton('Set Multipole Values', self)
+        v_button.clicked.connect(self.on_multipoles_click)
+        grid4.addWidget(v_button, 11+2, 8)
+        
+        # add c-file button
+        c_button = QPushButton('Load C-file', self)
+        c_button.clicked.connect(self.openFileDialog)
+        grid4.addWidget(c_button, 12+2, 8)
+
+        # add run and stop button
+        r_button = QPushButton('Run', self)
+        r_button.clicked.connect(self.on_run_click_main)
+        grid4.addWidget(r_button, 13+2, 8)
+
+        r_button = QPushButton('Terminate', self)
+        r_button.clicked.connect(self.on_terminate_click_main)
+        grid4.addWidget(r_button, 14+2, 8)
+
+
+        grid4.setRowStretch(4, 1)
+        self.tab4.setLayout(grid4)
+
        
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)
 
+    def on_run_click_main(self):
+        self.on_multipoles_click()
+        self.on_run_click()
+        return
+
+    def on_terminate_click_main(self):
+        # self.HasEnvironment.scheduler.pause()
+        self.HasEnvironment.core.reset()
+        return
 
     def on_run_click(self):
         self.run_rigol_extraction()
@@ -581,10 +721,13 @@ class MyTabWidget(HasEnvironment,QWidget):
                 self.on_voltage_click()
             elif self.tabs.currentIndex() == 1:
                 self.on_multipoles_click()
+            elif self.tabs.currentIndex() == 2:
+                self.on_run_click()
+            elif self.tabs.currentIndex() == 3:
+                self.on_run_click_main()
         else:
             super().keyPressEvent(qKeyEvent)
-               
-            
+                           
     def on_voltage_click(self):
         # Create electrode list of floats
         self.el_list = []
@@ -608,7 +751,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         # self.mutate_dataset(key="dac_voltages", index=0, value=1)
 
     def on_multipoles_click(self):
-
     
         # Create multiple list of floats
         self.mul_list = []
@@ -717,8 +859,6 @@ class MyTabWidget(HasEnvironment,QWidget):
                 g = 0
             col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),int(255*g),0)
             entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
-
-
 
 
 class Electron_GUI(Electron, EnvExperiment):#, object):
