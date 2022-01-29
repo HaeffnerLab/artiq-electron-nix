@@ -48,8 +48,15 @@ class Electron(HasEnvironment):
 
     def prepare(self):
         self.ne = 22 # number of electrodes
+        self.np = 8 # number of experiment parameters
+        self.nf = 2 # number of flags
         self.set_dataset(key="dac_voltages", value=np.zeros(self.ne), broadcast=True) # Dac voltages
-        
+        # electrodes: [bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,...,tr5,t0,b0]
+        # pins=[13,15,17,19,21,22,7,5,3,1,24,2,26,28,30,9,20,18,16,14,0,11] # Unused dac channels: 4,6,8,10,12,23,25,27,29,31
+
+        self.set_dataset(key="parameters", value=np.zeros(self.np), broadcast=True) # Experiment parameters: t_load(us),t_wait(us),t_delay(ns), time_window_width(ns),pulse_counting_time (ms), trigger level (V), # repetitions, # datapoints
+        self.set_dataset(key="flags", value=np.zeros(self.nf), broadcast=True) # Flags indicating changes from GUI: DAC, experiment parameters, 1: there is change that need to be implemented
+
         self.set_dataset('count_tot',[-100]*self.time_count,broadcast=True) # Number of pulses sent to ttl2
         self.set_dataset('count_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI
         self.set_dataset('count_threshold',[-200]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 from threshold detector
@@ -77,6 +84,79 @@ class Electron(HasEnvironment):
         self.tab_widget = MyTabWidget(self,win)
         win.setCentralWidget(self.tab_widget)
 
+    @ kernel
+    def self_get_dataset(self):
+        self.core.reset()
+        dac_vs = self.get_dataset(key="dac_voltages")
+        # parameter_list = self.get_dataset(key="parameters")
+        print(dac_vs)
+
+
+    @ kernel
+    def self_updated_run(self):
+        self.core.reset()
+        dac_vs = self.get_dataset(key="dac_voltages")
+        parameter_list = self.get_dataset(key="parameters")
+        print("This is artiq parameter_list")
+        print(parameter_list)
+        pins=[13,15,17,19,21,22,7,5,3,1,24,2,26,28,30,9,20,18,16,14,0,11] # Unused dac channels: 4,6,8,10,12,23,25,27,29,31
+        t_load = parameter_list[0]
+        t_wait = parameter_list[1]
+        t_delay = parameter_list[2]
+        time_window_width = parameter_list[3]
+        number_of_repetitions = parameter_list[6]
+        number_of_datapoints = parameter_list[7]
+
+        count_tot = 0
+
+        for i in range(number_of_datapoints):
+            flag_dac = self.get_dataset(key="flags")[0]
+            flag_parameter = self.get_dataset(key="flags")[1]
+            if flag_dac == 1:
+            # load dac voltages
+                dac_vs = self.get_dataset(key="dac_voltages")
+                self.zotino0.init()
+                self.core.break_realtime() 
+                for pin in range(self.ne):
+                    delay(500*us)
+                    self.zotino0.write_dac(pins[pin],dac_vs[pin])    
+                self.zotino0.load()
+                self.mutate_dataset('flags',0,0)
+            if flag_parameter == 1:
+                parameter_list = self.get_dataset(key="parameters")
+                t_load = parameter_list[0]
+                t_wait = parameter_list[1]
+                t_delay = parameter_list[2]
+                time_window_width = parameter_list[3]
+                number_of_repetitions = parameter_list[6]
+                number_of_datapoints = parameter_list[7]
+                self.mutate_dataset('flags',1,0)
+            for j in range(number_of_repetitions):
+                self.core.break_realtime()
+                with sequential:
+                    self.ttl8.on()
+                    delay(t_load*us)
+                    with parallel:
+                        self.ttl8.off()
+                        self.ttl9.on()
+                    delay(t_wait*us)
+                    with parallel:
+                        self.ttl9.off()
+                        self.ttl10.pulse(2*us)
+                        with sequential:
+                            # t_extract = self.t_load + self.t_wait + t_delay
+                            delay(t_delay*ns)
+                            t_count = self.ttl2.gate_rising(time_window_width*ns)
+                    count = self.ttl2.count(t_count)
+                    if count > 0:
+                        count = 1
+                    count_tot += count
+                    delay(1*us)
+            self.mutate_dataset('count_ROI',i,count_tot)
+
+
+        # self.set_dac_voltages(self.get_dataset(key="dac_voltages"))
+        # self.run_experiment(self.get_dataset(key="parameters")) # try afterwards whether this can be combined into functions...
 
     @ kernel
     def set_dac_voltages(self,dac_vs):
@@ -93,6 +173,41 @@ class Electron(HasEnvironment):
             self.zotino0.write_dac(pins[pin],dac_vs[pin]) 
             #i=i+1     
         self.zotino0.load()
+
+    @kernel
+    def run_experiment(self,parameter_list):
+        t_load = parameter_list[0]
+        t_wait = parameter_list[1]
+        t_delay = parameter_list[2]
+        time_window_width = parameter_list[3]
+        number_of_repetitions = parameter_list[6]
+        number_of_datapoints = parameter_list[7]
+        self.core.reset()
+        count_tot = 0
+        for i in range(number_of_datapoints):
+            for j in range(number_of_repetitions):
+                self.core.break_realtime()
+                with sequential:
+                    self.ttl8.on()
+                    delay(t_load*us)
+                    with parallel:
+                        self.ttl8.off()
+                        self.ttl9.on()
+                    delay(t_wait*us)
+                    with parallel:
+                        self.ttl9.off()
+                        self.ttl10.pulse(2*us)
+                        with sequential:
+                            # t_extract = self.t_load + self.t_wait + t_delay
+                            delay(t_delay*ns)
+                            t_count = self.ttl2.gate_rising(time_window_width*ns)
+                    count = self.ttl2.count(t_count)
+                    if count > 0:
+                        count = 1
+                    count_tot += count
+                    delay(1*us)
+            cycle_duration = t_load+t_wait+2+t_delay/1000+time_window_width/1000+1
+            self.mutate_dataset('count_ROI',i,count_tot)
 
     @kernel
     def pulse_counting(self,time_count,detection_time):
@@ -113,8 +228,13 @@ class Electron(HasEnvironment):
                 # print(self.ttl2.count(t_count)/(self.detection_time*ms))
 
     @kernel
-    def run_experiment(self,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width):
-        # self.set_dataset('count_ROI',[-2]*number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI
+    def run_experiment(self,parameter_list):
+        t_load = parameter_list[0]
+        t_wait = parameter_list[1]
+        t_delay = parameter_list[2]
+        time_window_width = parameter_list[3]
+        number_of_repetitions = parameter_list[6]
+        number_of_datapoints = parameter_list[7]
         self.core.reset()
         count_tot = 0
         for i in range(number_of_datapoints):
@@ -182,13 +302,6 @@ class Electron(HasEnvironment):
             cycle_duration = t_load+t_wait+2+t_delay/1000+time_window_width/1000+1
             self.mutate_dataset('count_threshold',i,count_tot)
 
-
-
-    def get_artiq_dataset(self,k):
-        delay(1000*us)
-        print(self.get_dataset(key=k))
-        return self.get_dataset(key=k)
-
 import vxi11
 import matplotlib.pyplot as plt
 # Control the rigol to give out extraction pulse
@@ -237,7 +350,6 @@ class rigol():
 
 
 
-
 # Creating tab widgets
 class MyTabWidget(HasEnvironment,QWidget):
     
@@ -258,8 +370,8 @@ class MyTabWidget(HasEnvironment,QWidget):
     def pulse_counting(self,time_count,detection_time):
         self.HasEnvironment.pulse_counting(time_count,detection_time)
 
-    def run_experiment(self,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width):
-        self.HasEnvironment.run_experiment(number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
+    # def run_experiment(self,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width):
+        # self.HasEnvironment.run_experiment(number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
 
     def threshold_detector_test(self,trigger_level,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width): # zotino4 for trigger, zotino 6 give 3.3 V
         self.HasEnvironment.threshold_detector_test(trigger_level,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
@@ -283,10 +395,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tabs.resize(300, 150)
   
         # Add tabs
-        self.tabs.addTab(self.tab1, "ELECTRODES")
-        # self.tabs.addTab(self.tab2, "MULTIPOLES")
+        self.tabs.addTab(self.tab1, "ELECTRODES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
+        self.tabs.addTab(self.tab2, "MULTIPOLES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
         # self.tabs.addTab(self.tab3, "PARAMETERS")
-        self.tabs.addTab(self.tab4, "Main Experiment")
+        self.tabs.addTab(self.tab4, "Main Experiment") # This tab could mutate dac_voltage, parameters, flags dataset and run_self_updated
         
   
         '''
@@ -375,82 +487,82 @@ class MyTabWidget(HasEnvironment,QWidget):
         #set electrode values for dataset
         self.e=self.electrodes
         
-        # '''
-        # MULTIPOLES TAB
-        # '''
-        # grid2 = QGridLayout() #make grid layout
+        '''
+        MULTIPOLES TAB
+        '''
+        grid2 = QGridLayout() #make grid layout
         
-        # #[values (from list), x-coord (label), x-coord (entrtyBox), y-coord (first entry)]
-        # self.bl_electrodes0 = [0,0,1,4] 
-        # self.br_electrodes0 = [1,4,5,4]
-        # self.tl_electrodes0 = [3,0,1,10]
-        # self.tr_electrodes0 = [4,4,5,10]
+        #[values (from list), x-coord (label), x-coord (entrtyBox), y-coord (first entry)]
+        self.bl_electrodes0 = [0,0,1,4] 
+        self.br_electrodes0 = [1,4,5,4]
+        self.tl_electrodes0 = [3,0,1,10]
+        self.tr_electrodes0 = [4,4,5,10]
 
-        # self.all_labels =[]        
+        self.all_labels =[]        
 
-        # #electrode grid
-        # for e in [self.tl_electrodes0, self.tr_electrodes0, self.bl_electrodes0, self.br_electrodes0]:            
+        #electrode grid
+        for e in [self.tl_electrodes0, self.tr_electrodes0, self.bl_electrodes0, self.br_electrodes0]:            
             
-        #     el_values = e[0]
-        #     xcoord_label = e[1]
-        #     xcoord_entry = e[2]
-        #     ycoord = e[3]
+            el_values = e[0]
+            xcoord_label = e[1]
+            xcoord_entry = e[2]
+            ycoord = e[3]
             
-        #     for i in range(len(self.ELECTRODES[el_values])):      
-        #         label = QLabel('       '+ self.ELECTRODES[el_values][i], self)
-        #         grid2.addWidget(label,ycoord-i,xcoord_label, 1,1)
-        #         label0 = QLabel('0.00', self)
-        #         self.all_labels.append(label0)
-        #         label0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
-        #         grid2.addWidget(label0,ycoord-i,xcoord_entry,1,1)
+            for i in range(len(self.ELECTRODES[el_values])):      
+                label = QLabel('       '+ self.ELECTRODES[el_values][i], self)
+                grid2.addWidget(label,ycoord-i,xcoord_label, 1,1)
+                label0 = QLabel('0.00', self)
+                self.all_labels.append(label0)
+                label0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+                grid2.addWidget(label0,ycoord-i,xcoord_entry,1,1)
           
-        # #spacing
-        # label_gap = QLabel('', self)
-        # grid2.addWidget(label_gap,5,1,1,1)
+        #spacing
+        label_gap = QLabel('', self)
+        grid2.addWidget(label_gap,5,1,1,1)
 
 
-        # #t0
-        # label_t0 = QLabel('           '+self.ELECTRODES[2][0], self)
-        # grid2.addWidget(label_t0,1,2,1,1)
-        # self.label0_t0 = QLabel('0.00', self)
-        # self.label0_t0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
-        # grid2.addWidget(self.label0_t0,1,3,1,1)
+        #t0
+        label_t0 = QLabel('           '+self.ELECTRODES[2][0], self)
+        grid2.addWidget(label_t0,1,2,1,1)
+        self.label0_t0 = QLabel('0.00', self)
+        self.label0_t0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+        grid2.addWidget(self.label0_t0,1,3,1,1)
 
         
-        # #b0 
-        # label_b0 = QLabel('           '+self.ELECTRODES[5][0], self)
-        # grid2.addWidget(label_b0,7,2,1,1)
-        # self.label0_b0 = QLabel('0.00', self)
-        # self.label0_b0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
-        # grid2.addWidget(self.label0_b0,7,3,1,1)    
+        #b0 
+        label_b0 = QLabel('           '+self.ELECTRODES[5][0], self)
+        grid2.addWidget(label_b0,7,2,1,1)
+        self.label0_b0 = QLabel('0.00', self)
+        self.label0_b0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+        grid2.addWidget(self.label0_b0,7,3,1,1)    
 
-        # #spacing  
-        # label_gap = QLabel('          ', self)
-        # grid2.addWidget(label_gap,1,6,1,1)
+        #spacing  
+        label_gap = QLabel('          ', self)
+        grid2.addWidget(label_gap,1,6,1,1)
     
-        # #create multipole text entry boxes
-        # MULTIPOLES = ['Ex:', 'Ey:', 'Ez:', 'U1:', 'U2:', 'U3:', 'U4:', 'U5:', 'U6:']
-        # self.multipoles = []
-        # for i in range(len(MULTIPOLES)):  
-        #     spin = QtWidgets.QDoubleSpinBox(self)
-        #     spin.setRange(-10,10)
-        #     spin.setSingleStep(0.01)
-        #     grid2.addWidget(spin,i,8,1,1)
-        #     self.multipoles.append(spin)
-        #     label = QLabel(MULTIPOLES[i], self)
-        #     grid2.addWidget(label,i,7,1,1)  
+        #create multipole text entry boxes
+        MULTIPOLES = ['Ex:', 'Ey:', 'Ez:', 'U1:', 'U2:', 'U3:', 'U4:', 'U5:', 'U6:']
+        self.multipoles = []
+        for i in range(len(MULTIPOLES)):  
+            spin = QtWidgets.QDoubleSpinBox(self)
+            spin.setRange(-10,10)
+            spin.setSingleStep(0.01)
+            grid2.addWidget(spin,i,8,1,1)
+            self.multipoles.append(spin)
+            label = QLabel(MULTIPOLES[i], self)
+            grid2.addWidget(label,i,7,1,1)  
     
-        # # add voltage button
-        # v_button = QPushButton('Set Multipole Values', self)
-        # v_button.clicked.connect(self.on_multipoles_click)
-        # grid2.addWidget(v_button, 9, 8)
+        # add voltage button
+        v_button = QPushButton('Set Multipole Values', self)
+        v_button.clicked.connect(self.on_multipoles_click)
+        grid2.addWidget(v_button, 9, 8)
         
-        # # add c-file button
-        # c_button = QPushButton('Load C-file', self)
-        # c_button.clicked.connect(self.openFileDialog)
-        # grid2.addWidget(c_button, 10, 8)
-        # grid2.setRowStretch(4, 1)
-        # self.tab2.setLayout(grid2)
+        # add c-file button
+        c_button = QPushButton('Load C-file', self)
+        c_button.clicked.connect(self.openFileDialog)
+        grid2.addWidget(c_button, 10, 8)
+        grid2.setRowStretch(4, 1)
+        self.tab2.setLayout(grid2)
 
 
         # '''
@@ -519,11 +631,12 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         self.parameter_list = []  
         #create parameter text entry boxes
+        self.default = [100,100,600,100,500,0.3,1000,1000] # default values
         PARAMETERS1 = ['Load time (us):', 'Wait time (us):', 'Delay time (ns):','Time window width (ns):' ]
-        DEFAULTS1 = [100,100,600,100] # default values
+        DEFAULTS1 = self.default[0:4] # default values
         for i in range(len(PARAMETERS1)):  
             spin = QtWidgets.QSpinBox(self)
-            spin.setRange(0,100000)
+            spin.setRange(0,10000000)
             spin.setSingleStep(10)
             spin.setValue(DEFAULTS1[i]) # set default values
             grid4.addWidget(spin,i+13,1,1,1)
@@ -537,7 +650,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
         PARAMETERS2 = ['Pulse counting time (ms):', 'Trigger level (V):', '# Repetitions:', '# Datapoints:']
-        DEFAULTS2 = [500,0.3,1000,1000] # default values
+        DEFAULTS2 = self.default[4:] # default values
         for i in range(len(PARAMETERS2)):
             if i == 1:
                 spin = QtWidgets.QDoubleSpinBox(self)
@@ -625,11 +738,16 @@ class MyTabWidget(HasEnvironment,QWidget):
         # add extraction button
         v_button = QPushButton('Initialize Rigol', self)
         v_button.clicked.connect(self.run_rigol_extraction)
-        grid4.addWidget(v_button, 10+2, 8)
+        grid4.addWidget(v_button, 9+2, 8)
 
         # add voltage button
-        v_button = QPushButton('Set Multipole Values', self)
-        v_button.clicked.connect(self.on_multipoles_click)
+        v_button = QPushButton('Update Multipole Values', self)
+        v_button.clicked.connect(self.update_multipoles)
+        grid4.addWidget(v_button, 10+2, 8)
+
+        # add parameter button
+        v_button = QPushButton('Update Parameter Values', self)
+        v_button.clicked.connect(self.update_parameters)
         grid4.addWidget(v_button, 11+2, 8)
         
         # add c-file button
@@ -639,7 +757,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         # add run and stop button
         self.r_button = QPushButton('Run', self)
-        self.r_button.clicked.connect(self.on_run_click_main)
+        self.r_button.clicked.connect(self.on_run_click_test)
         grid4.addWidget(self.r_button, 13+2, 8)
 
         t_button = QPushButton('Terminate', self)
@@ -655,6 +773,153 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)        
         return
+
+
+    def update_multipoles(self):
+        
+        # Create multiple list of floats
+        self.mul_list = []
+        for m in self.multipoles:
+            text = m.text() or "0"
+            self.mul_list.append(float(text))
+        
+        # Calculate and print electrode values
+        try:
+            self.m=np.array([self.mul_list])
+            self.e=np.matmul(self.m, self.C_Matrix_np)
+        except:
+            f = open('/home/electron/artiq/electron/Cfile.txt','r')
+            # create list of lines from selected textfile
+            self.list_of_lists = []
+            for line in f:
+                stripped_line = line.strip()
+                line_list = stripped_line.split()
+                self.list_of_lists.append(float(line_list[0]))
+                
+            # create list of values from size 22*9 C-file
+            curr_elt = 0
+            self.C_Matrix = []
+            for i in range(9):
+                C_row = []
+                for i in range(self.ne):
+                    C_row.append(self.list_of_lists[curr_elt])
+                    curr_elt+=1
+                self.C_Matrix.append(C_row) 
+                
+            self.C_Matrix_np = np.array(self.C_Matrix)
+            self.m=np.array([self.mul_list])
+            #print(shape(self.m))
+            grid_multipole = np.array([0.00862239,0.00089517,0.0019013,-0.01988827,-0.01471916,0.0042531,0.00176647,0.00671031,0.00186274])
+            
+            self.m=self.m-grid_multipole
+            self.e=np.matmul(self.m, self.C_Matrix_np)
+            
+        for i in range(len(self.e[0])):
+            if self.e[0][i]>=10:
+                print(f'warning: voltage {round(self.e[0][i],3)}  exceeds limit')
+                self.e[0][i]=10
+            elif self.e[0][i]<=-10:
+                print(f'warning: voltage {round(self.e[0][i],3)} exceeds limit')
+                self.e[0][i]=-10
+
+        self.e = self.e[0].tolist()
+        #self.e.append(self.e.pop(10))      
+        for i in range(len(self.e)):
+            self.e[i]=round(self.e[i],3)
+
+        print('before changing order', self.e)
+
+        #assuming electrode order is [tl1,...,tl5,bl1,...,bl5,tr1,...,tr5,br1,...,br5,t0,b0]
+        #new order: [ bl1,...,bl5,br1,...,br5,b0,t0,tl1,...,tl5,tr1,..,tr5]
+
+        self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br4':self.e[8],'br5':self.e[9],'b0':0.0,'t0':self.e[11],'tl1':self.e[12],'tl2':self.e[13],'tl3':self.e[14],'tl4':self.e[15],'tl5':self.e[16],'tr1':self.e[17],'tr2':self.e[18],'tr3':self.e[19],'tr4':self.e[20],'tr5':self.e[21]}
+        print(self.elec_dict)
+
+#print:before changing order [-0.148, -3.811, 2.036, -3.659, -0.144, -0.148, -3.833, 2.009, -3.639, -0.144, 0.537, 0.021, -0.111, -3.203, 0.181, -3.58, -0.131, -0.111, -3.222, 0.22, -3.555, 0.0]
+#print:{'tl1': -0.148, 'tl2': -3.811, 'tl3': 2.036, 'tl4': -3.659, 'tl5': -0.144, 'bl1': -0.148, 'bl2': -3.833, 'bl3': 2.009, 'bl4': -3.639, 'bl5': -0.144, 'tr1': 0.537, 'tr2': 0.021, 'tr3': -0.111, 'tr4': -3.203, 'tr5': 0.181, 'br1': -3.58, 'br2': -0.131, 'br3': -0.111, 'br4': -3.222, 'br5': 0.22, 't0': -3.555, 'b0': 0.0}
+#print:[-0.148, -3.833, 2.009, -3.639, -0.144, -3.58, -0.131, -0.111, -3.222, 0.22, -0.148, -3.811, 2.036, -3.659, -0.144, 0.537, 0.021, -0.111, -3.203, 0.181, -3.555, 0.0]
+ 
+        for i in range(5):
+            self.all_labels[i].setText(str(round(self.elec_dict['bl'+f'{1+i}'],3)))
+            self.all_labels[5+i].setText(str(round(self.elec_dict['br'+f'{1+i}'],3)))
+            self.all_labels[10+i].setText(str(round(self.elec_dict['tl'+f'{1+i}'],3)))
+            self.all_labels[15+i].setText(str(round(self.elec_dict['tr'+f'{1+i}'],3)))
+        self.label0_t0.setText(str(round(self.elec_dict['t0'],3)))
+        self.label0_b0.setText(str(round(self.elec_dict['b0'],3)))
+
+        self.e=[]
+        for string in ['bl','br','tl','tr']:
+            for i in range(5):
+                self.e.append(self.elec_dict[string+f'{1+i}'])
+        self.e.append(self.elec_dict['t0'])
+        self.e.append(self.elec_dict['b0'])
+        print(self.e)
+        for c in range(len(self.e)):
+            self.mutate_dataset("dac_voltages", c, self.e[c])
+        self.mutate_dataset("flags",0,1)
+        print("update_multipoles has mutated dataset")
+
+    def update_parameters(self):
+        # t_load = parameter_list[0]
+        # t_wait = parameter_list[1]
+        # t_delay = parameter_list[2]
+        # time_window_width = parameter_list[3]
+        # pulse_counting_time = parameter_list[4]
+        # trigger_level = parameter_list[5]
+        # number_of_repetitions = parameter_list[6]
+        # number_of_datapoints = parameter_list[7]
+
+        self.p = []
+        for i in range(len(self.parameter_list)):
+            m = self.parameter_list[i]
+            text = m.text() or str(self.default[i])
+            self.p.append(float(text))
+
+        for i in range(len(self.p)):
+            self.mutate_dataset("parameters", i, self.p[i])
+        self.mutate_dataset("flags",1,1)
+        print(self.p)
+        print("update_parameters has mutated dataset")
+
+
+
+
+    def any_name(self):
+        self.update_multipoles()
+        self.update_parameters()
+        self.run_rigol_extraction()
+        self.HasEnvironment.self_updated_run()
+        return
+
+        
+    def on_run_click_test(self):
+        self.HasEnvironment.self_get_dataset()
+
+
+
+        # self.mutate_dataset("flags",0,1)
+        # self.mutate_dataset("flags",1,1)
+
+        # self.thread = QThread() # create a QThread object
+        # self.worker = Worker(self.any_name) # create a worker object
+        # # self.worker = Worker() # create a worker object
+        # self.worker.moveToThread(self.thread) # move worker to the thread
+        # # connect signals and slots
+        # self.thread.started.connect(self.worker.run)
+        # self.worker.finished.connect(self.thread.quit)
+        # self.worker.finished.connect(self.worker.deleteLater)
+        # self.thread.finished.connect(self.thread.deleteLater)
+        # # self.worker.progress.connect(self.reportProgress)
+        # self.thread.start() # start the thread
+        # # final resets
+        # self.r_button.setEnabled(False)
+        # self.thread.finished.connect(
+        #     lambda: self.r_button.setEnabled(True)
+        #     )
+
+        
+        
+        
 
     def on_run_click_main(self):
         self.thread = QThread() # create a QThread object
@@ -758,111 +1023,109 @@ class MyTabWidget(HasEnvironment,QWidget):
             text = i.text() or "0"
             self.el_list.append(float(text))
         self.e=self.el_list
-        for c in range(len(self.e)):
-            self.mutate_dataset("dac_voltages", c, self.e[c])
-        print("on_voltage_click has mutated dataset")
-        # dac_vs = self.get_artiq_dataset("dac_voltages")
-        # print("has got artiq dataset")
-        # print(dac_vs)
-        # self.delay(10000)
         self.set_dac_voltages(self.e)
         print("on_voltage_click has updated voltages")
         print(self.e)
+        for c in range(len(self.e)):
+            self.mutate_dataset("dac_voltages", c, self.e[c])
+        print("on_voltage_click has mutated dataset")
 
         #print(self.e)
         # dummy_object = HasEnvironment()
         # self.mutate_dataset(key="dac_voltages", index=0, value=1)
 
     def on_multipoles_click(self):
+        self.update_multipoles()
     
-        # Create multiple list of floats
-        self.mul_list = []
-        for m in self.multipoles:
-            text = m.text() or "0"
-            self.mul_list.append(float(text))
+#         # Create multiple list of floats
+#         self.mul_list = []
+#         for m in self.multipoles:
+#             text = m.text() or "0"
+#             self.mul_list.append(float(text))
         
-        # Calculate and print electrode values
-        try:
-            self.m=np.array([self.mul_list])
-            self.e=np.matmul(self.m, self.C_Matrix_np)
-        except:
-            f = open('/home/electron/artiq/electron/Cfile.txt','r')
-            # create list of lines from selected textfile
-            self.list_of_lists = []
-            for line in f:
-                stripped_line = line.strip()
-                line_list = stripped_line.split()
-                self.list_of_lists.append(float(line_list[0]))
+#         # Calculate and print electrode values
+#         try:
+#             self.m=np.array([self.mul_list])
+#             self.e=np.matmul(self.m, self.C_Matrix_np)
+#         except:
+#             f = open('/home/electron/artiq/electron/Cfile.txt','r')
+#             # create list of lines from selected textfile
+#             self.list_of_lists = []
+#             for line in f:
+#                 stripped_line = line.strip()
+#                 line_list = stripped_line.split()
+#                 self.list_of_lists.append(float(line_list[0]))
                 
-            # create list of values from size 22*9 C-file
-            curr_elt = 0
-            self.C_Matrix = []
-            for i in range(9):
-                C_row = []
-                for i in range(self.ne):
-                    C_row.append(self.list_of_lists[curr_elt])
-                    curr_elt+=1
-                self.C_Matrix.append(C_row) 
+#             # create list of values from size 22*9 C-file
+#             curr_elt = 0
+#             self.C_Matrix = []
+#             for i in range(9):
+#                 C_row = []
+#                 for i in range(self.ne):
+#                     C_row.append(self.list_of_lists[curr_elt])
+#                     curr_elt+=1
+#                 self.C_Matrix.append(C_row) 
                 
-            self.C_Matrix_np = np.array(self.C_Matrix)
-            self.m=np.array([self.mul_list])
-            #print(shape(self.m))
-            grid_multipole = np.array([0.00862239,0.00089517,0.0019013,-0.01988827,-0.01471916,0.0042531,0.00176647,0.00671031,0.00186274])
+#             self.C_Matrix_np = np.array(self.C_Matrix)
+#             self.m=np.array([self.mul_list])
+#             #print(shape(self.m))
+#             grid_multipole = np.array([0.00862239,0.00089517,0.0019013,-0.01988827,-0.01471916,0.0042531,0.00176647,0.00671031,0.00186274])
             
-            self.m=self.m-grid_multipole
-            self.e=np.matmul(self.m, self.C_Matrix_np)
+#             self.m=self.m-grid_multipole
+#             self.e=np.matmul(self.m, self.C_Matrix_np)
 
 
             
-        for i in range(len(self.e[0])):
-            if self.e[0][i]>=10:
-                print(f'warning: voltage {round(self.e[0][i],3)}  exceeds limit')
-                self.e[0][i]=10
-            elif self.e[0][i]<=-10:
-                print(f'warning: voltage {round(self.e[0][i],3)} exceeds limit')
-                self.e[0][i]=-10
+#         for i in range(len(self.e[0])):
+#             if self.e[0][i]>=10:
+#                 print(f'warning: voltage {round(self.e[0][i],3)}  exceeds limit')
+#                 self.e[0][i]=10
+#             elif self.e[0][i]<=-10:
+#                 print(f'warning: voltage {round(self.e[0][i],3)} exceeds limit')
+#                 self.e[0][i]=-10
 
 
-        self.e = self.e[0].tolist()
-        #self.e.append(self.e.pop(10))      
-        for i in range(len(self.e)):
-            self.e[i]=round(self.e[i],3)
+#         self.e = self.e[0].tolist()
+#         #self.e.append(self.e.pop(10))      
+#         for i in range(len(self.e)):
+#             self.e[i]=round(self.e[i],3)
 
-        print('before changing order', self.e)
+#         print('before changing order', self.e)
 
 
-        #assuming electrode order is [tl1,...,tl5,bl1,...,bl5,tr1,...,tr5,br1,...,br5,t0,b0]
-        #new order: [ bl1,...,bl5,br1,...,br5,b0,t0,tl1,...,tl5,tr1,..,tr5]
+#         #assuming electrode order is [tl1,...,tl5,bl1,...,bl5,tr1,...,tr5,br1,...,br5,t0,b0]
+#         #new order: [ bl1,...,bl5,br1,...,br5,b0,t0,tl1,...,tl5,tr1,..,tr5]
 
-        self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br4':self.e[8],'br5':self.e[9],'b0':0.0,'t0':self.e[11],'tl1':self.e[12],'tl2':self.e[13],'tl3':self.e[14],'tl4':self.e[15],'tl5':self.e[16],'tr1':self.e[17],'tr2':self.e[18],'tr3':self.e[19],'tr4':self.e[20],'tr5':self.e[21]}
-        print(self.elec_dict)
+#         self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br4':self.e[8],'br5':self.e[9],'b0':0.0,'t0':self.e[11],'tl1':self.e[12],'tl2':self.e[13],'tl3':self.e[14],'tl4':self.e[15],'tl5':self.e[16],'tr1':self.e[17],'tr2':self.e[18],'tr3':self.e[19],'tr4':self.e[20],'tr5':self.e[21]}
+#         print(self.elec_dict)
 
-#print:before changing order [-0.148, -3.811, 2.036, -3.659, -0.144, -0.148, -3.833, 2.009, -3.639, -0.144, 0.537, 0.021, -0.111, -3.203, 0.181, -3.58, -0.131, -0.111, -3.222, 0.22, -3.555, 0.0]
-#print:{'tl1': -0.148, 'tl2': -3.811, 'tl3': 2.036, 'tl4': -3.659, 'tl5': -0.144, 'bl1': -0.148, 'bl2': -3.833, 'bl3': 2.009, 'bl4': -3.639, 'bl5': -0.144, 'tr1': 0.537, 'tr2': 0.021, 'tr3': -0.111, 'tr4': -3.203, 'tr5': 0.181, 'br1': -3.58, 'br2': -0.131, 'br3': -0.111, 'br4': -3.222, 'br5': 0.22, 't0': -3.555, 'b0': 0.0}
-#print:[-0.148, -3.833, 2.009, -3.639, -0.144, -3.58, -0.131, -0.111, -3.222, 0.22, -0.148, -3.811, 2.036, -3.659, -0.144, 0.537, 0.021, -0.111, -3.203, 0.181, -3.555, 0.0]
+# #print:before changing order [-0.148, -3.811, 2.036, -3.659, -0.144, -0.148, -3.833, 2.009, -3.639, -0.144, 0.537, 0.021, -0.111, -3.203, 0.181, -3.58, -0.131, -0.111, -3.222, 0.22, -3.555, 0.0]
+# #print:{'tl1': -0.148, 'tl2': -3.811, 'tl3': 2.036, 'tl4': -3.659, 'tl5': -0.144, 'bl1': -0.148, 'bl2': -3.833, 'bl3': 2.009, 'bl4': -3.639, 'bl5': -0.144, 'tr1': 0.537, 'tr2': 0.021, 'tr3': -0.111, 'tr4': -3.203, 'tr5': 0.181, 'br1': -3.58, 'br2': -0.131, 'br3': -0.111, 'br4': -3.222, 'br5': 0.22, 't0': -3.555, 'b0': 0.0}
+# #print:[-0.148, -3.833, 2.009, -3.639, -0.144, -3.58, -0.131, -0.111, -3.222, 0.22, -0.148, -3.811, 2.036, -3.659, -0.144, 0.537, 0.021, -0.111, -3.203, 0.181, -3.555, 0.0]
  
-        for i in range(5):
-            self.all_labels[i].setText(str(round(self.elec_dict['bl'+f'{1+i}'],3)))
-            self.all_labels[5+i].setText(str(round(self.elec_dict['br'+f'{1+i}'],3)))
-            self.all_labels[10+i].setText(str(round(self.elec_dict['tl'+f'{1+i}'],3)))
-            self.all_labels[15+i].setText(str(round(self.elec_dict['tr'+f'{1+i}'],3)))
-        self.label0_t0.setText(str(round(self.elec_dict['t0'],3)))
-        self.label0_b0.setText(str(round(self.elec_dict['b0'],3)))
+#         for i in range(5):
+#             self.all_labels[i].setText(str(round(self.elec_dict['bl'+f'{1+i}'],3)))
+#             self.all_labels[5+i].setText(str(round(self.elec_dict['br'+f'{1+i}'],3)))
+#             self.all_labels[10+i].setText(str(round(self.elec_dict['tl'+f'{1+i}'],3)))
+#             self.all_labels[15+i].setText(str(round(self.elec_dict['tr'+f'{1+i}'],3)))
+#         self.label0_t0.setText(str(round(self.elec_dict['t0'],3)))
+#         self.label0_b0.setText(str(round(self.elec_dict['b0'],3)))
 
-        self.e=[]
-        for string in ['bl','br','tl','tr']:
-            for i in range(5):
-                self.e.append(self.elec_dict[string+f'{1+i}'])
-        self.e.append(self.elec_dict['t0'])
-        self.e.append(self.elec_dict['b0'])
-        print(self.e)
+#         self.e=[]
+#         for string in ['bl','br','tl','tr']:
+#             for i in range(5):
+#                 self.e.append(self.elec_dict[string+f'{1+i}'])
+#         self.e.append(self.elec_dict['t0'])
+#         self.e.append(self.elec_dict['b0'])
+#         print(self.e)
 
-        print(self.e)
-        for c in range(len(self.e)):
-            self.mutate_dataset("dac_voltages", c, self.e[c])
-        print("on_multipole_click has mutated dataset")
+#         print(self.e)
+        
         self.set_dac_voltages(self.e)
         print("on_multipole_click has updated voltages")
+        # for c in range(len(self.e)):
+        #     self.mutate_dataset("dac_voltages", c, self.e[c])
+        # print("on_multipole_click has mutated dataset")
 
     def change_background(self, entry):
         if entry.text() == '':
@@ -922,3 +1185,7 @@ class Electron_GUI(Electron, EnvExperiment):#, object):
     def run(self):
         # self.launch_GUI()
         print("Hello World")
+
+
+
+
