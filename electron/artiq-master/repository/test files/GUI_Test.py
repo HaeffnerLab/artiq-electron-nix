@@ -1,6 +1,7 @@
 from artiq.experiment import *
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QObject, QThread, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QFileDialog, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QLabel, QGridLayout, QLineEdit, QPlainTextEdit
 import select
 from artiq.experiment import *
@@ -233,6 +234,8 @@ class rigol():
         inst.write("OUTPUT2 ON")
  
         return
+
+
 
 
 # Creating tab widgets
@@ -635,13 +638,13 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4.addWidget(c_button, 12+2, 8)
 
         # add run and stop button
-        r_button = QPushButton('Run', self)
-        r_button.clicked.connect(self.on_run_click_main)
-        grid4.addWidget(r_button, 13+2, 8)
+        self.r_button = QPushButton('Run', self)
+        self.r_button.clicked.connect(self.on_run_click_main)
+        grid4.addWidget(self.r_button, 13+2, 8)
 
-        r_button = QPushButton('Terminate', self)
-        r_button.clicked.connect(self.on_terminate_click_main)
-        grid4.addWidget(r_button, 14+2, 8)
+        t_button = QPushButton('Terminate', self)
+        t_button.clicked.connect(self.on_terminate_click_main)
+        grid4.addWidget(t_button, 14+2, 8)
 
 
         grid4.setRowStretch(4, 1)
@@ -650,9 +653,32 @@ class MyTabWidget(HasEnvironment,QWidget):
        
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
-        self.setLayout(self.layout)
+        self.setLayout(self.layout)        
+        return
 
     def on_run_click_main(self):
+        self.thread = QThread() # create a QThread object
+        self.worker = Worker(self.on_run_multipole_click) # create a worker object
+        # self.worker = Worker() # create a worker object
+        self.worker.moveToThread(self.thread) # move worker to the thread
+        # connect signals and slots
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        # self.worker.progress.connect(self.reportProgress)
+        self.thread.start() # start the thread
+        # final resets
+        self.r_button.setEnabled(False)
+        self.thread.finished.connect(
+            lambda: self.r_button.setEnabled(True)
+            )
+        # self.thread.finished.connect(
+        #     lambda: self.stepLabel.setText("Long-Running Step: 0")
+        #     )
+
+
+    def on_run_multipole_click(self):
         self.on_multipoles_click()
         self.on_run_click()
         return
@@ -676,6 +702,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         time_window_width = int(self.parameter_values[3])
         self.run_experiment(number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
         print("Running!")
+
+
     
     def on_terminate_click(self):
     	return
@@ -859,6 +887,32 @@ class MyTabWidget(HasEnvironment,QWidget):
                 g = 0
             col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),int(255*g),0)
             entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
+
+
+# Creating a worker class
+class Worker(QObject):
+
+    finished = pyqtSignal()
+    # progress = pyqtSignal(int)
+    # result = pyqtSignal('QVariant')
+
+    # def __init__(self, function, args):
+    #     super().__init__()
+    #     self.function = function
+    #     self.args = args
+    def __init__(self, function):
+        super().__init__()
+        self.function = function
+        
+
+    def run(self):
+        self.function()
+        # self.function(self.args)
+        # for i in range(60):
+        #     time.sleep(1)
+        #     self.progress.emit(i+1)
+        # self.result.emit(res)
+        self.finished.emit()
 
 
 class Electron_GUI(Electron, EnvExperiment):#, object):
