@@ -23,43 +23,52 @@ class Electron(HasEnvironment):
         self.setattr_device('core')
         self.setattr_device('zotino0') # artiq DAC
         self.setattr_device('ttl2') # where MCP pulses are being sent in by ttl, connect to Q of threshold detector
-        # self.setattr_device('ttl3') # where sync of extraction pulses are being sent in by ttl
         self.setattr_device('ttl8') # use this channel to trigger AOM, connect to switch near VCO and AOM
         self.setattr_device('ttl9') # use this channel to trigger R&S for tickle pulse, connect to R&S
         self.setattr_device('ttl10') # use this channel to trigger extraction pulse, connect to RIGOL external trigger
         self.setattr_device('ttl11') # use this channel to reset threshold detector, connect to reset of threshold detector
-        
-
-        # run experiment:
-        # self.setattr_argument('t_load',NumberValue(default=100,unit='us',scale=1,ndecimals=0,step=1)) # loading time
-        # self.setattr_argument('t_wait',NumberValue(default=100,unit='us',scale=1,ndecimals=0,step=1)) # wait time
-        # self.setattr_argument('number_of_repetitions', NumberValue(default=1000,unit=' ',scale=1,ndecimals=0,step=1)) #how many experiment cycles per data point
-        self.setattr_argument('number_of_datapoints', NumberValue(default=1000,unit=' ',scale=1,ndecimals=0,step=1)) #how many data points on the plot
-        # self.setattr_argument('t_delay', NumberValue(default=600,unit='ns',scale=1,ndecimals=0,step=1)) # the delay between the extraction pulse and the MCP signal
-        # self.setattr_argument('time_window_width', NumberValue(default=100,unit='ns',scale=1,ndecimals=0,step=1)) # width of the detection time window
         self.setattr_device('scheduler') # scheduler used
 
-        # pulse counting:
-        self.setattr_argument('time_count', NumberValue(default=1000,unit='number of counts',scale=1,ndecimals=0,step=1)) #how many indices you have in time axis
-        # self.setattr_argument('detection_time',NumberValue(default=500,unit='ms',scale=1,ndecimals=0,step=1))
-
-        # threshold detector test:
-        # self.setattr_argument('trigger_level', NumberValue(default=0.3,unit='V',scale=1,ndecimals=2,step=1))
+        self.setattr_argument('number_of_datapoints', NumberValue(default=1000,unit=' ',scale=1,ndecimals=0,step=1)) #how many data points on the plot, run experiment
+        self.setattr_argument('time_count', NumberValue(default=1000,unit='number of counts',scale=1,ndecimals=0,step=1)) #how many indices you have in time axis, pulse counting
 
     def prepare(self):
-        self.ne = 22 # number of electrodes
-        self.np = 8 # number of experiment parameters
-        self.nf = 2 # number of flags
-        self.set_dataset(key="dac_voltages", value=np.zeros(self.ne), broadcast=True) # Dac voltages
-        # electrodes: [bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,...,tr5,t0,b0]
-        # pins=[13,15,17,19,21,22,7,5,3,1,24,2,26,28,30,9,20,18,16,14,0,11] # Unused dac channels: 4,6,8,10,12,23,25,27,29,31
+        
+        # dac voltages: electrodes: [bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,...,tr5,t0,b0], pins=[13,15,17,19,21,22,7,5,3,1,24,2,26,28,30,9,20,18,16,14,0,11], Unused dac channels: 4,6,8,10,12,23,25,27,29,31
+        for i in ["bl","br","tl","tr"]:
+            for j in ["1","2","3","4","5"]:
+                self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True)
+        self.set_dataset(key="optimize.e.t0", value=np.float32(0), broadcast=True)
+        self.set_dataset(key="optimize.e.b0", value=np.float32(0), broadcast=True)
+        
+        # flags: indicating changes from GUI, 1 = there is change that need to be implemented
+        self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True) # electrode voltages
+        self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True) # experiment parameters
 
-        self.set_dataset(key="parameters", value=np.zeros(self.np), broadcast=True) # Experiment parameters: t_load(us),t_wait(us),t_delay(ns), time_window_width(ns),pulse_counting_time (ms), trigger level (V), # repetitions, # datapoints
-        self.set_dataset(key="flags", value=np.zeros(self.nf), broadcast=True) # Flags indicating changes from GUI: DAC, experiment parameters, 1: there is change that need to be implemented
+        # parameters: t_load(us),t_wait(us),t_delay(ns), time_window_width(ns),pulse_counting_time(ms), trigger level (V), # repetitions, # datapoints
+        self.set_dataset(key="optimize.parameter.t_load", value = 100, broadcast=True) # t_load(us)
+        self.set_dataset(key="optimize.parameter.t_wait", value = 100, broadcast=True) # t_wait(us)
+        self.set_dataset(key="optimize.parameter.t_delay", value = 600, broadcast=True) # t_delay(ns)
+        self.set_dataset(key="optimize.parameter.time_window_width", value = 100, broadcast=True) # time_window_width(ns)
+        self.set_dataset(key="optimize.parameter.pulse_counting_time", value = 500, broadcast=True) # pulse_counting_time(ms)
+        self.set_dataset(key="optimize.parameter.trigger_level", value = 0.3, broadcast=True) # trigger level (V)
+        self.set_dataset(key="optimize.parameter.number_of_repetitions", value = 1000, broadcast=True) # number of repetitions
+        self.set_dataset(key="optimize.parameter.number_of_datapoints", value = 1000, broadcast=True) # number of datapoints
 
+        # results:
         self.set_dataset('count_tot',[-100]*self.time_count,broadcast=True) # Number of pulses sent to ttl2
         self.set_dataset('count_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI
         self.set_dataset('count_threshold',[-200]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 from threshold detector
+
+        self.ne = 22 # number of electrodes
+        self.np = 8 # number of experiment parameters
+
+        
+        # self.nf = 2 # number of flags
+        # self.set_dataset(key="dac_voltages", value=np.zeros(self.ne), broadcast=True) # Dac voltages
+        # self.set_dataset(key="parameters", value=np.zeros(self.np), broadcast=True) # Experiment parameters: t_load(us),t_wait(us),t_delay(ns), time_window_width(ns),pulse_counting_time (ms), trigger level (V), # repetitions, # datapoints
+        # self.set_dataset(key="flags", value=np.zeros(self.nf), broadcast=True) # Flags indicating changes from GUI: DAC, experiment parameters, 1: there is change that need to be implemented
+        
     
     def launch_GUI(self):       
         #launch GUI
@@ -84,75 +93,199 @@ class Electron(HasEnvironment):
         self.tab_widget = MyTabWidget(self,win)
         win.setCentralWidget(self.tab_widget)
 
-    @ kernel
-    def self_get_dataset(self):
-        self.core.reset()
-        dac_vs = self.get_dataset(key="dac_voltages")
-        # parameter_list = self.get_dataset(key="parameters")
-        print(dac_vs)
 
 
+    def get_dac_vs(self):
+        dac_vs = []
+        for i in ["bl","br","tl","tr"]:
+            for j in ["1","2","3","4","5"]:
+                dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
+        dac_vs.append(self.get_dataset(key="optimize.e.t0"))
+        dac_vs.append(self.get_dataset(key="optimize.e.b0"))
+        self.dac_vs = dac_vs
+        # return dac_vs
+
+    def get_parameter_list(self):
+        parameter_list = []
+        for i in ["t_load","t_wait","t_delay","time_window_width","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints"]:
+            parameter_list.append(np.int(self.get_dataset(key="optimize.parameter."+i)))
+        self.parameter_list = parameter_list
+        self.trigger_level = self.get_dataset(key="optimize.parameter.trigger_level")
+
     @ kernel
-    def self_updated_run(self):
-        self.core.reset()
-        dac_vs = self.get_dataset(key="dac_voltages")
-        parameter_list = self.get_dataset(key="parameters")
-        print("This is artiq parameter_list")
-        print(parameter_list)
+    def kernel_run (self,i,load_dac=True):
         pins=[13,15,17,19,21,22,7,5,3,1,24,2,26,28,30,9,20,18,16,14,0,11] # Unused dac channels: 4,6,8,10,12,23,25,27,29,31
-        t_load = parameter_list[0]
-        t_wait = parameter_list[1]
-        t_delay = parameter_list[2]
-        time_window_width = parameter_list[3]
-        number_of_repetitions = parameter_list[6]
-        number_of_datapoints = parameter_list[7]
+        self.core.break_realtime()
 
-        count_tot = 0
+        # t_load = np.int(self.parameter_list[0])
+        # t_wait = np.int(self.parameter_list[1])
+        # t_delay = np.int(self.parameter_list[2])
+        # time_window_width = np.int(self.parameter_list[3])
+        # number_of_repetitions = np.int(self.parameter_list[6])
+        # number_of_datapoints = np.int(self.parameter_list[7])
+
+        t_load = self.parameter_list[0]
+        t_wait = self.parameter_list[1]
+        t_delay = self.parameter_list[2]
+        time_window_width = self.parameter_list[3]
+        number_of_repetitions = self.parameter_list[6]
+        number_of_datapoints = self.parameter_list[7]
+
+        if load_dac:
+            self.zotino0.init()
+            self.core.break_realtime() 
+            for pin in range(self.ne):
+                delay(500*us)
+                self.zotino0.write_dac(pins[pin],self.dac_vs[pin])    
+            self.zotino0.load()
+
+        for j in range(number_of_repetitions):
+            self.core.break_realtime()
+            with sequential:
+                self.ttl8.on()
+                delay(t_load*us)
+                with parallel:
+                    self.ttl8.off()
+                    self.ttl9.on()
+                delay(t_wait*us)
+                with parallel:
+                    self.ttl9.off()
+                    self.ttl10.pulse(2*us)
+                    with sequential:
+                        # t_extract = self.t_load + self.t_wait + t_delay
+                        delay(t_delay*ns)
+                        t_count = self.ttl2.gate_rising(time_window_width*ns)
+                count = self.ttl2.count(t_count)
+                if count > 0:
+                    count = 1
+                self.count_tot += count
+                delay(1*us)
+        self.mutate_dataset('count_ROI',i,self.count_tot)
+
+
+
+    def rolling_test(self):
+
+        self.get_dac_vs()
+        # print("dac_vs")
+        print("dac_vs",self.dac_vs)
+        # t_load, t_wait, t_delay, time_window_width, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
+        self.get_parameter_list()
+        print("parameter_list",self.parameter_list)
+                
+        
+        self.count_tot = 0
+        load_dac = False
+
+        number_of_datapoints = np.int(self.parameter_list[7])
 
         for i in range(number_of_datapoints):
-            flag_dac = self.get_dataset(key="flags")[0]
-            flag_parameter = self.get_dataset(key="flags")[1]
+            flag_dac = self.get_dataset(key="optimize.flag.e")
+            flag_parameter = self.get_dataset(key="optimize.flag.p")
             if flag_dac == 1:
             # load dac voltages
-                dac_vs = self.get_dataset(key="dac_voltages")
-                self.zotino0.init()
-                self.core.break_realtime() 
-                for pin in range(self.ne):
-                    delay(500*us)
-                    self.zotino0.write_dac(pins[pin],dac_vs[pin])    
-                self.zotino0.load()
-                self.mutate_dataset('flags',0,0)
+                dac_vs = self.get_dac_vs()
+                load_dac = True
+                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True)
             if flag_parameter == 1:
-                parameter_list = self.get_dataset(key="parameters")
-                t_load = parameter_list[0]
-                t_wait = parameter_list[1]
-                t_delay = parameter_list[2]
-                time_window_width = parameter_list[3]
-                number_of_repetitions = parameter_list[6]
-                number_of_datapoints = parameter_list[7]
-                self.mutate_dataset('flags',1,0)
-            for j in range(number_of_repetitions):
-                self.core.break_realtime()
-                with sequential:
-                    self.ttl8.on()
-                    delay(t_load*us)
-                    with parallel:
-                        self.ttl8.off()
-                        self.ttl9.on()
-                    delay(t_wait*us)
-                    with parallel:
-                        self.ttl9.off()
-                        self.ttl10.pulse(2*us)
-                        with sequential:
-                            # t_extract = self.t_load + self.t_wait + t_delay
-                            delay(t_delay*ns)
-                            t_count = self.ttl2.gate_rising(time_window_width*ns)
-                    count = self.ttl2.count(t_count)
-                    if count > 0:
-                        count = 1
-                    count_tot += count
-                    delay(1*us)
-            self.mutate_dataset('count_ROI',i,count_tot)
+                # t_load, t_wait, t_delay, time_window_width, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
+                parameter_list = self.get_parameter_list()
+                self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True)
+            self.kernel_run(i,load_dac)
+
+            
+    # @ kernel
+    def self_updated_optimize(self):
+        # dac_vs = []
+        # self.get_dac_vs()
+        # print(self.dac_vs)
+        # print(self.dac_vs[0])
+        a = self.test
+        print(a)
+        print(a[0])
+
+        # a = self.get_dataset("optimize.e.bl1")
+        # print(a)
+        # print(type(a))
+        # b = np.float32(a)
+        # print(b)
+        # print("dataset returns", type(a), a)
+        # for i in ["bl","br","tl","tr"]:
+        #     for j in ["1","2","3","4","5"]:
+        #         print(self.get_dataset(key="optimize.e."+i+j))
+        # dac_vs.append(np.float(self.get_dataset(key="optimize.e.t0")))
+        # dac_vs.append(np.float(self.get_dataset(key="optimize.e.b0")))
+        # dac_vs = self.get_dac_vs()
+        # print(dac_vs)
+
+
+
+
+
+        # self.core.reset()
+        # dac_vs = self.get_dac_vs()
+        # print("dac_vs")
+        # print(dac_vs)
+        # # t_load, t_wait, t_delay, time_window_width, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
+        # parameter_list = self.get_parameter_list()
+                
+        # pins=[13,15,17,19,21,22,7,5,3,1,24,2,26,28,30,9,20,18,16,14,0,11] # Unused dac channels: 4,6,8,10,12,23,25,27,29,31
+        
+        
+        # t_load = parameter_list[0]
+        # t_wait = parameter_list[1]
+        # t_delay = parameter_list[2]
+        # time_window_width = parameter_list[3]
+        # number_of_repetitions = parameter_list[6]
+        # number_of_datapoints = parameter_list[7]
+
+        # count_tot = 0
+
+        # for i in range(number_of_datapoints):
+        #     flag_dac = self.get_dataset(key="optimize.flag.e")
+        #     flag_parameter = self.get_dataset(key="optimize.flag.p")
+        #     if flag_dac == 1:
+        #     # load dac voltages
+        #         dac_vs = self.get_dac_vs()
+        #         self.zotino0.init()
+        #         self.core.break_realtime() 
+        #         for pin in range(self.ne):
+        #             delay(500*us)
+        #             self.zotino0.write_dac(pins[pin],dac_vs[pin])    
+        #         self.zotino0.load()
+        #         self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True)
+        #     if flag_parameter == 1:
+        #         # t_load, t_wait, t_delay, time_window_width, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
+        #         parameter_list = self.get_parameter_list()
+        #         t_load = parameter_list[0]
+        #         t_wait = parameter_list[1]
+        #         t_delay = parameter_list[2]
+        #         time_window_width = parameter_list[3]
+        #         number_of_repetitions = parameter_list[6]
+        #         number_of_datapoints = parameter_list[7]
+        #         self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True)
+        #     for j in range(number_of_repetitions):
+        #         self.core.break_realtime()
+        #         with sequential:
+        #             self.ttl8.on()
+        #             delay(t_load*us)
+        #             with parallel:
+        #                 self.ttl8.off()
+        #                 self.ttl9.on()
+        #             delay(t_wait*us)
+        #             with parallel:
+        #                 self.ttl9.off()
+        #                 self.ttl10.pulse(2*us)
+        #                 with sequential:
+        #                     # t_extract = self.t_load + self.t_wait + t_delay
+        #                     delay(t_delay*ns)
+        #                     t_count = self.ttl2.gate_rising(time_window_width*ns)
+        #             count = self.ttl2.count(t_count)
+        #             if count > 0:
+        #                 count = 1
+        #             count_tot += count
+        #             delay(1*us)
+        #     self.mutate_dataset('count_ROI',i,count_tot)
 
 
         # self.set_dac_voltages(self.get_dataset(key="dac_voltages"))
@@ -173,41 +306,6 @@ class Electron(HasEnvironment):
             self.zotino0.write_dac(pins[pin],dac_vs[pin]) 
             #i=i+1     
         self.zotino0.load()
-
-    @kernel
-    def run_experiment(self,parameter_list):
-        t_load = parameter_list[0]
-        t_wait = parameter_list[1]
-        t_delay = parameter_list[2]
-        time_window_width = parameter_list[3]
-        number_of_repetitions = parameter_list[6]
-        number_of_datapoints = parameter_list[7]
-        self.core.reset()
-        count_tot = 0
-        for i in range(number_of_datapoints):
-            for j in range(number_of_repetitions):
-                self.core.break_realtime()
-                with sequential:
-                    self.ttl8.on()
-                    delay(t_load*us)
-                    with parallel:
-                        self.ttl8.off()
-                        self.ttl9.on()
-                    delay(t_wait*us)
-                    with parallel:
-                        self.ttl9.off()
-                        self.ttl10.pulse(2*us)
-                        with sequential:
-                            # t_extract = self.t_load + self.t_wait + t_delay
-                            delay(t_delay*ns)
-                            t_count = self.ttl2.gate_rising(time_window_width*ns)
-                    count = self.ttl2.count(t_count)
-                    if count > 0:
-                        count = 1
-                    count_tot += count
-                    delay(1*us)
-            cycle_duration = t_load+t_wait+2+t_delay/1000+time_window_width/1000+1
-            self.mutate_dataset('count_ROI',i,count_tot)
 
     @kernel
     def pulse_counting(self,time_count,detection_time):
@@ -349,7 +447,6 @@ class rigol():
         return
 
 
-
 # Creating tab widgets
 class MyTabWidget(HasEnvironment,QWidget):
     
@@ -361,21 +458,12 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.ne = self.HasEnvironment.ne
         self.e=np.full(self.ne, 0.0)    
     
-    def mutate_dataset(self,key,index,value):
-        self.HasEnvironment.mutate_dataset(key=key, index=index, value=value)
+    # def mutate_dataset(self,key,index,value):
+        # self.HasEnvironment.mutate_dataset(key=key, index=index, value=value)
 
     def set_dac_voltages(self,dac_vs):
         self.HasEnvironment.set_dac_voltages(dac_vs)
 
-    def pulse_counting(self,time_count,detection_time):
-        self.HasEnvironment.pulse_counting(time_count,detection_time)
-
-    # def run_experiment(self,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width):
-        # self.HasEnvironment.run_experiment(number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
-
-    def threshold_detector_test(self,trigger_level,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width): # zotino4 for trigger, zotino 6 give 3.3 V
-        self.HasEnvironment.threshold_detector_test(trigger_level,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
-    
     def run_rigol_extraction(self):
         self.rigol113 =  rigol()
         # parameters for the Rigol waveforms
@@ -399,12 +487,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tabs.addTab(self.tab2, "MULTIPOLES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
         # self.tabs.addTab(self.tab3, "PARAMETERS")
         self.tabs.addTab(self.tab4, "Main Experiment") # This tab could mutate dac_voltage, parameters, flags dataset and run_self_updated
-        
-  
+          
         '''
         ELECTRODES TAB
         '''
-
         grid1 = QGridLayout()  
         self.ELECTRODES = []  # Labels for text entry
         for n in ['tl', 'tr', 't0', 'bl', 'br', 'b0']:
@@ -430,7 +516,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.br_electrodes = [1,4,5,4]
         self.tl_electrodes = [3,0,1,10]
         self.tr_electrodes = [4,4,5,10]
-
         
         #electrode grid
         for e in [self.tl_electrodes, self.tr_electrodes, self.bl_electrodes, self.br_electrodes]:            
@@ -757,7 +842,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         # add run and stop button
         self.r_button = QPushButton('Run', self)
-        self.r_button.clicked.connect(self.on_run_click_test)
+        self.r_button.clicked.connect(self.on_run_click_main)
         grid4.addWidget(self.r_button, 13+2, 8)
 
         t_button = QPushButton('Terminate', self)
@@ -850,80 +935,55 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.e=[]
         for string in ['bl','br','tl','tr']:
             for i in range(5):
-                self.e.append(self.elec_dict[string+f'{1+i}'])
+                self.e.append(self.elec_dict[string+f'{1+i}'])     
         self.e.append(self.elec_dict['t0'])
         self.e.append(self.elec_dict['b0'])
         print(self.e)
-        for c in range(len(self.e)):
-            self.mutate_dataset("dac_voltages", c, self.e[c])
-        self.mutate_dataset("flags",0,1)
+        self.mutate_dataset_electrode()
+        # for c in range(len(self.e)):
+            # self.mutate_dataset("dac_voltages", c, self.e[c])
+        self.HasEnvironment.set_dataset("optimize.flag.e",1)
         print("update_multipoles has mutated dataset")
 
-    def update_parameters(self):
-        # t_load = parameter_list[0]
-        # t_wait = parameter_list[1]
-        # t_delay = parameter_list[2]
-        # time_window_width = parameter_list[3]
-        # pulse_counting_time = parameter_list[4]
-        # trigger_level = parameter_list[5]
-        # number_of_repetitions = parameter_list[6]
-        # number_of_datapoints = parameter_list[7]
+    def mutate_dataset_electrode(self):
+        for string in ['bl','br','tl','tr']:
+            for i in range(5):
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'])
+        self.HasEnvironment.set_dataset("optimize.e.t0",self.elec_dict['t0'])
+        self.HasEnvironment.set_dataset("optimize.e.b0",self.elec_dict['b0'])
 
+    def mutate_dataset_parameters(self):
+        p = ["t_load","t_wait","t_delay","time_window_width","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints"]
+        for i in range(len(p)):
+            self.HasEnvironment.set_dataset(key="optimize.parameter."+p[i],value = self.parameter_dict[p[i]], broadcast=True)
+
+
+    def update_parameters(self):
         self.p = []
         for i in range(len(self.parameter_list)):
             m = self.parameter_list[i]
             text = m.text() or str(self.default[i])
             self.p.append(float(text))
-
-        for i in range(len(self.p)):
-            self.mutate_dataset("parameters", i, self.p[i])
-        self.mutate_dataset("flags",1,1)
+        self.parameter_dict={"t_load":self.p[0],"t_wait":self.p[1],"t_delay":self.p[2],"time_window_width":self.p[3],"pulse_counting_time":self.p[4],"trigger_level":self.p[5],"number_of_repetitions":self.p[6],"number_of_datapoints":self.p[7]}
         print(self.p)
+        self.mutate_dataset_parameters()
+        self.HasEnvironment.set_dataset("optimize.flag.p",1)
         print("update_parameters has mutated dataset")
 
 
-
-
-    def any_name(self):
+    def long_run_task(self):
         self.update_multipoles()
         self.update_parameters()
         self.run_rigol_extraction()
-        self.HasEnvironment.self_updated_run()
+        # self.HasEnvironment.self_updated_optimize()
+        self.HasEnvironment.core.reset()
+        self.HasEnvironment.rolling_test()
         return
 
         
-    def on_run_click_test(self):
-        self.HasEnvironment.self_get_dataset()
-
-
-
-        # self.mutate_dataset("flags",0,1)
-        # self.mutate_dataset("flags",1,1)
-
-        # self.thread = QThread() # create a QThread object
-        # self.worker = Worker(self.any_name) # create a worker object
-        # # self.worker = Worker() # create a worker object
-        # self.worker.moveToThread(self.thread) # move worker to the thread
-        # # connect signals and slots
-        # self.thread.started.connect(self.worker.run)
-        # self.worker.finished.connect(self.thread.quit)
-        # self.worker.finished.connect(self.worker.deleteLater)
-        # self.thread.finished.connect(self.thread.deleteLater)
-        # # self.worker.progress.connect(self.reportProgress)
-        # self.thread.start() # start the thread
-        # # final resets
-        # self.r_button.setEnabled(False)
-        # self.thread.finished.connect(
-        #     lambda: self.r_button.setEnabled(True)
-        #     )
-
-        
-        
-        
-
     def on_run_click_main(self):
         self.thread = QThread() # create a QThread object
-        self.worker = Worker(self.on_run_multipole_click) # create a worker object
+        self.worker = Worker(self.long_run_task) # create a worker object
         # self.worker = Worker() # create a worker object
         self.worker.moveToThread(self.thread) # move worker to the thread
         # connect signals and slots
@@ -943,30 +1003,25 @@ class MyTabWidget(HasEnvironment,QWidget):
         #     )
 
 
-    def on_run_multipole_click(self):
-        self.on_multipoles_click()
-        self.on_run_click()
-        return
-
     def on_terminate_click_main(self):
-        # self.HasEnvironment.scheduler.pause()
-        self.HasEnvironment.core.reset()
+        self.HasEnvironment.scheduler.pause()
+        # self.HasEnvironment.core.reset()
         return
 
-    def on_run_click(self):
-        self.run_rigol_extraction()
-        self.parameter_values = []
-        for i in self.parameter_list:
-            text = i.text()
-            self.parameter_values.append(float(text))
-        number_of_datapoints = int(self.parameter_values[7])
-        number_of_repetitions = int(self.parameter_values[6])
-        t_load = int(self.parameter_values[0])
-        t_wait = int(self.parameter_values[1])
-        t_delay = int(self.parameter_values[2])
-        time_window_width = int(self.parameter_values[3])
-        self.run_experiment(number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
-        print("Running!")
+    # def on_run_click(self):
+    #     self.run_rigol_extraction()
+    #     self.parameter_values = []
+    #     for i in self.parameter_list:
+    #         text = i.text()
+    #         self.parameter_values.append(float(text))
+    #     number_of_datapoints = int(self.parameter_values[7])
+    #     number_of_repetitions = int(self.parameter_values[6])
+    #     t_load = int(self.parameter_values[0])
+    #     t_wait = int(self.parameter_values[1])
+    #     t_delay = int(self.parameter_values[2])
+    #     time_window_width = int(self.parameter_values[3])
+    #     self.run_experiment(number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,time_window_width)
+    #     print("Running!")
    
         
     def openFileDialog(self):
@@ -979,10 +1034,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         #self.textedit = QPlainTextEdit()
         filename = QFileDialog.getOpenFileName(parent=self, options=QtWidgets.QFileDialog.DontUseNativeDialog)
 
-
         if filename[0]:
             f = open(filename[0],'r')
-        
         # create list of lines from selected textfile
         self.list_of_lists = []
         for line in f:
@@ -1007,12 +1060,13 @@ class MyTabWidget(HasEnvironment,QWidget):
         if qKeyEvent.key() == QtCore.Qt.Key_Return:
             if self.tabs.currentIndex() == 0:
                 self.on_voltage_click()
-            # elif self.tabs.currentIndex() == 1:
-            #     self.on_multipoles_click()
-            # elif self.tabs.currentIndex() == 2:
-            #     self.on_run_click()
             elif self.tabs.currentIndex() == 1:
-                self.on_run_click_main()
+                self.on_multipoles_click()
+            elif self.tabs.currentIndex() == 2:
+                self.update_multipoles()
+                self.update_parameters()
+            # elif self.tabs.currentIndex() == 1:
+                # self.on_run_click_main()
         else:
             super().keyPressEvent(qKeyEvent)
                            
@@ -1025,6 +1079,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.e=self.el_list
         self.set_dac_voltages(self.e)
         print("on_voltage_click has updated voltages")
+
         print(self.e)
         for c in range(len(self.e)):
             self.mutate_dataset("dac_voltages", c, self.e[c])
