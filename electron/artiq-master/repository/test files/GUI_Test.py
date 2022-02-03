@@ -35,29 +35,36 @@ class Electron(HasEnvironment):
         
         # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
         # pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
-        for i in ["bl","br","tl","tr"]:
-            for j in ["1","2","3","4","5"]:
-                if i+j == 'br4' or 'tr4':
-                    continue
-                else:
-                    self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True)
-        self.set_dataset(key="optimize.e.btr4", value=np.float32(0), broadcast=True)
-        self.set_dataset(key="optimize.e.t0", value=np.float32(0), broadcast=True)
-        self.set_dataset(key="optimize.e.b0", value=np.float32(0), broadcast=True)
         
-        # flags: indicating changes from GUI, 1 = there is change that needs to be implemented
-        self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True) # electrode voltages
-        self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True) # experiment parameters
+        # for i in ["bl"]:
+        #     for j in ["1","2","3","4","5"]:
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        # for i in ["br"]:
+        #     for j in ["1","2","3","5"]:
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        # for i in ["tl"]:
+        #     for j in ["1","2","3","4","5"]:
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        # for i in ["tr"]:
+        #     for j in ["1","2","3","5"]:
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        # self.set_dataset(key="optimize.e.btr4", value=np.float32(0), broadcast=True, persist=True)
+        # self.set_dataset(key="optimize.e.t0", value=np.float32(0), broadcast=True, persist=True)
+        # self.set_dataset(key="optimize.e.b0", value=np.float32(0), broadcast=True, persist=True)
+        
+        # # flags: indicating changes from GUI, 1 = there is change that needs to be implemented
+        # self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True) # electrode voltages
+        # self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True) # experiment parameters
 
-        # parameters: t_load(us),t_wait(us),t_delay(ns), t_acquisition(ns),pulse_counting_time(ms), trigger_level (V), # repetitions, # datapoints
-        self.set_dataset(key="optimize.parameter.t_load", value = np.int(100), broadcast=True) # t_load(us)
-        self.set_dataset(key="optimize.parameter.t_wait", value = np.int(100), broadcast=True) # t_wait(us)
-        self.set_dataset(key="optimize.parameter.t_delay", value = np.int(600), broadcast=True) # t_delay(ns)
-        self.set_dataset(key="optimize.parameter.t_acquisition", value = np.int(100), broadcast=True) # t_acquisition(ns)
-        self.set_dataset(key="optimize.parameter.pulse_counting_time", value = np.int(500), broadcast=True) # pulse_counting_time(ms)
-        self.set_dataset(key="optimize.parameter.trigger_level", value = 0.3, broadcast=True) # trigger level (V)
-        self.set_dataset(key="optimize.parameter.number_of_repetitions", value = np.int(1000), broadcast=True) # number of repetitions
-        self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(5000), broadcast=True) # number of datapoints
+        # # parameters: t_load(us),t_wait(us),t_delay(ns), t_acquisition(ns),pulse_counting_time(ms), trigger_level (V), # repetitions, # datapoints
+        # self.set_dataset(key="optimize.parameter.t_load", value = np.int(100), broadcast=True, persist=True) # t_load(us)
+        # self.set_dataset(key="optimize.parameter.t_wait", value = np.int(100), broadcast=True, persist=True) # t_wait(us)
+        # self.set_dataset(key="optimize.parameter.t_delay", value = np.int(600), broadcast=True, persist=True) # t_delay(ns)
+        # self.set_dataset(key="optimize.parameter.t_acquisition", value = np.int(100), broadcast=True, persist=True) # t_acquisition(ns)
+        # self.set_dataset(key="optimize.parameter.pulse_counting_time", value = np.int(500), broadcast=True, persist=True) # pulse_counting_time(ms)
+        # self.set_dataset(key="optimize.parameter.trigger_level", value = 0.3, broadcast=True, persist=True) # trigger level (V)
+        # self.set_dataset(key="optimize.parameter.number_of_repetitions", value = np.int(1000), broadcast=True, persist=True) # number of repetitions
+        # self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(5000), broadcast=True, persist=True) # number of datapoints
 
         # results:
         self.set_dataset('optimize.result.count_tot',[-100]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2
@@ -92,12 +99,18 @@ class Electron(HasEnvironment):
 
     def get_dac_vs(self):
         dac_vs = []
-        for i in ["bl","br","tl","tr"]:
+        for i in ["bl"]:
             for j in ["1","2","3","4","5"]:
-                if i+j == 'br4' or 'tr4':
-                    continue
-                else:
-                    dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
+                dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
+        for i in ["br"]:
+            for j in ["1","2","3","5"]:
+                dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
+        for i in ["tl"]:
+            for j in ["1","2","3","4","5"]:
+                dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
+        for i in ["tr"]:
+            for j in ["1","2","3","5"]:
+                dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
         dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
         dac_vs.append(self.get_dataset(key="optimize.e.t0"))
         dac_vs.append(self.get_dataset(key="optimize.e.b0"))
@@ -172,11 +185,11 @@ class Electron(HasEnvironment):
                 # load dac voltages
                 dac_vs = self.get_dac_vs()
                 load_dac = True
-                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True)
+                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True)
             if flag_parameter == 1:
                 # t_load, t_wait, t_delay, t_acquisition, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
                 parameter_list = self.get_parameter_list()
-                self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True)
+                self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True)
             self.kernel_run_optimize(i,load_dac)
 
     
@@ -357,6 +370,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.br_electrodes = [1,4,5,4]
         self.tl_electrodes = [3,0,1,10]
         self.tr_electrodes = [4,4,5,10]
+
         
         #electrode grid
         for e in [self.tl_electrodes, self.tr_electrodes, self.bl_electrodes, self.br_electrodes]:            
@@ -376,6 +390,8 @@ class MyTabWidget(HasEnvironment,QWidget):
                     spin = QtWidgets.QDoubleSpinBox(self)
                     spin.setRange(-10,10)
                     spin.setSingleStep(0.1)
+                    # spin.setValue(self.default_voltages[index_v]) # set default values
+                    # index_v += 1
                     grid1.addWidget(spin,ycoord-i,xcoord_entry,1,1)
                     self.electrodes.append(spin)
                     label = QLabel('       '+self.ELECTRODES[el_values][i], self)
@@ -385,6 +401,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         spin_btr4 = QtWidgets.QDoubleSpinBox(self)
         spin_btr4.setRange(-10,10)
         spin_btr4.setSingleStep(0.1)
+        # spin_btr4.setValue(self.default_voltages[-3])
         grid1.addWidget(spin_btr4,ycoord-3,xcoord_entry,1,1)
         label = QLabel('       '+'btr4:', self)
         grid1.addWidget(label,ycoord-3,xcoord_label,1,1)
@@ -398,6 +415,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         spin_t0 = QtWidgets.QDoubleSpinBox(self)
         spin_t0.setRange(-10,10)
         spin_t0.setSingleStep(0.1)
+        # spin_t0.setValue(self.default_voltages[-2])
         grid1.addWidget(spin_t0,1,3,1,1)
         self.electrodes.append(spin_t0)
         label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
@@ -407,6 +425,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         spin_b0 = QtWidgets.QDoubleSpinBox(self)
         spin_b0.setRange(-10,10)
         spin_b0.setSingleStep(0.1)
+        # spin_b0.setValue(self.default_voltages[-1])
         grid1.addWidget(spin_b0,7,3,1,1)
         self.electrodes.append(spin_b0)
         label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
@@ -436,9 +455,11 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         self.parameter_list = []  
         #create parameter text entry boxes
-        self.default = [100,100,600,100,500,0.3,1000,1000] # default values
+        # self.default = [100,100,600,100,500,0.3,1000,1000] # default values
+        self.default_parameter = self.get_default_parameter() # read data from dataset
         PARAMETERS1 = ['Load time (us):', 'Wait time (us):', 'Delay time (ns):','Acquisition time(ns):' ]
-        DEFAULTS1 = self.default[0:4] # default values
+        DEFAULTS1 = self.default_parameter[0:4] # default values
+
         for i in range(len(PARAMETERS1)):  
             spin = QtWidgets.QSpinBox(self)
             spin.setRange(0,10000000)
@@ -455,7 +476,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
         PARAMETERS2 = ['Pulse counting time (ms):', 'Trigger level (V):', '# Repetitions:', '# Datapoints:']
-        DEFAULTS2 = self.default[4:] # default values
+        DEFAULTS2 = self.default_parameter[4:] # default values
         for i in range(len(PARAMETERS2)):
             if i == 1:
                 spin = QtWidgets.QDoubleSpinBox(self)
@@ -484,6 +505,12 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         self.all_labels =[]        
 
+        
+
+        # get default electrode voltages
+        self.default_voltages = self.get_default_voltages()
+        index_v = 0
+
         #electrode grid
         for e in [self.tl_electrodes0, self.tr_electrodes0, self.bl_electrodes0, self.br_electrodes0]:            
             
@@ -501,7 +528,9 @@ class MyTabWidget(HasEnvironment,QWidget):
                 else:     
                     label = QLabel('       '+ self.ELECTRODES[el_values][i], self)
                     grid4.addWidget(label,ycoord-i,xcoord_label, 1,1)
-                    label0 = QLabel('0.00', self)
+                    # label0 = QLabel('0.00', self)
+                    label0 = QLabel(str(self.default_voltages[index_v]), self)
+                    index_v += 1
                     self.all_labels.append(label0)
                     label0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
                     grid4.addWidget(label0,ycoord-i,xcoord_entry,1,1)
@@ -510,7 +539,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         # append btr4 to self.electrodes
         label = QLabel('       '+ 'btr4:', self)
         grid4.addWidget(label,ycoord-3,xcoord_label, 1,1)
-        self.label0_btr4 = QLabel('0.00', self)
+        self.label0_btr4 = QLabel(str(self.default_voltages[-3]), self)
         self.label0_btr4.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
         grid4.addWidget(self.label0_btr4,ycoord-3,xcoord_entry,1,1)  
 
@@ -522,7 +551,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         #t0
         label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
         grid4.addWidget(label_t0,1,2,1,1)
-        self.label0_t0 = QLabel('0.00', self)
+        self.label0_t0 = QLabel(str(self.default_voltages[-2]), self)
         self.label0_t0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
         grid4.addWidget(self.label0_t0,1,3,1,1)
 
@@ -530,7 +559,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         #b0
         label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
         grid4.addWidget(label_b0,7,2,1,1)
-        self.label0_b0 = QLabel('0.00', self)
+        self.label0_b0 = QLabel(str(self.default_voltages[-1]), self)
         self.label0_b0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
         grid4.addWidget(self.label0_b0,7,3,1,1)    
 
@@ -545,14 +574,17 @@ class MyTabWidget(HasEnvironment,QWidget):
         #create multipole text entry boxes
         MULTIPOLES = ['Ex:', 'Ey:', 'Ez:', 'U1:', 'U2:', 'U3:', 'U4:', 'U5:', 'U6:']
         self.multipoles = []
+        self.default_multipoles = self.get_default_multipoles()
         for i in range(len(MULTIPOLES)):  
             spin = QtWidgets.QDoubleSpinBox(self)
             spin.setRange(-10,10)
             spin.setSingleStep(0.01)
+            spin.setValue(self.default_multipoles[i])
             grid4.addWidget(spin,i,8,1,1)
             self.multipoles.append(spin)
             label = QLabel(MULTIPOLES[i], self)
-            grid4.addWidget(label,i,7,1,1)  
+            grid4.addWidget(label,i,7,1,1)
+
 
         
         # add extraction button
@@ -604,6 +636,39 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.setLayout(self.layout)        
         return
 
+    def get_default_voltages(self):
+        default = []
+        for i in ["bl"]:
+            for j in ["1","2","3","4","5"]:
+                default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
+        for i in ["br"]:
+            for j in ["1","2","3","5"]:
+                default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
+        for i in ["tl"]:
+            for j in ["1","2","3","4","5"]:
+                default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
+        for i in ["tr"]:
+            for j in ["1","2","3","5"]:
+                default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
+        dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
+        dac_vs.append(self.get_dataset(key="optimize.e.t0"))
+        dac_vs.append(self.get_dataset(key="optimize.e.b0"))
+
+        return default
+
+    def get_default_parameter(self):
+        default = []
+        for i in ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints"]:
+            default.append(self.HasEnvironment.get_dataset(key="optimize.parameter."+i))
+        return default
+
+    def get_default_multipoles(self):
+        default = []
+        for i in ['Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']:
+            default.append(self.HasEnvironment.get_dataset("optimize.multipoles."+i))
+        return default
+
+
     def update_set_values(self):
         self.update_multipoles()
         self.update_parameters()
@@ -616,6 +681,9 @@ class MyTabWidget(HasEnvironment,QWidget):
         for m in self.multipoles:
             text = m.text() or "0"
             self.mul_list.append(float(text))
+
+        for i, value in enumerate(['Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']):
+            self.HasEnvironment.set_dataset("optimize.multipoles."+value,self.mul_list[i], broadcast=True, persist=True)
         
         # Calculate and print electrode values
         try:
@@ -712,36 +780,42 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.mutate_dataset_electrode()
         # for c in range(len(self.e)):
             # self.mutate_dataset("dac_voltages", c, self.e[c])
-        self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True)
+        self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True, persist=True)
         print("update_multipoles has mutated dataset")
 
     def mutate_dataset_electrode(self):
-        for string in ['bl','br','tl','tr']:
+        for string in ['bl']:
             for i in range(5):
-                if string+str(i+1) == 'br4' or 'tr4':
-                    continue
-                else:
-                    self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True)
-        self.HasEnvironment.set_dataset("optimize.e.btr4",self.elec_dict['btr4'], broadcast=True)
-        self.HasEnvironment.set_dataset("optimize.e.t0",self.elec_dict['t0'], broadcast=True)
-        self.HasEnvironment.set_dataset("optimize.e.b0",self.elec_dict['b0'], broadcast=True)
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+        for string in ['br']:
+            for i in [0,1,2,4]:
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+        for string in ['tl']:
+            for i in range(5):
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+        for string in ['tr']:
+            for i in [0,1,2,4]:
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.e.btr4",self.elec_dict['btr4'], broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.e.t0",self.elec_dict['t0'], broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.e.b0",self.elec_dict['b0'], broadcast=True, persist=True)
 
     def mutate_dataset_parameters(self):
         p = ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints"]
         for i in range(len(p)):
-            self.HasEnvironment.set_dataset(key="optimize.parameter."+p[i],value = self.parameter_dict[p[i]], broadcast=True)
+            self.HasEnvironment.set_dataset(key="optimize.parameter."+p[i],value = self.parameter_dict[p[i]], broadcast=True, persist=True)
 
 
     def update_parameters(self):
         self.p = []
         for i in range(len(self.parameter_list)):
             m = self.parameter_list[i]
-            text = m.text() or str(self.default[i])
+            text = m.text() or str(self.default_parameter[i])
             self.p.append(float(text))
         self.parameter_dict={"t_load":self.p[0],"t_wait":self.p[1],"t_delay":self.p[2],"t_acquisition":self.p[3],"pulse_counting_time":self.p[4],"trigger_level":self.p[5],"number_of_repetitions":self.p[6],"number_of_datapoints":self.p[7]}
         print(self.p)
         self.mutate_dataset_parameters()
-        self.HasEnvironment.set_dataset("optimize.flag.p",1, broadcast=True)
+        self.HasEnvironment.set_dataset("optimize.flag.p",1, broadcast=True, persist=True)
         print("update_parameters has mutated dataset")
 
 
