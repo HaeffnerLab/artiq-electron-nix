@@ -650,9 +650,9 @@ class MyTabWidget(HasEnvironment,QWidget):
         for i in ["tr"]:
             for j in ["1","2","3","5"]:
                 default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
-        dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
-        dac_vs.append(self.get_dataset(key="optimize.e.t0"))
-        dac_vs.append(self.get_dataset(key="optimize.e.b0"))
+        default.append(self.HasEnvironment.get_dataset(key="optimize.e.btr4"))
+        default.append(self.HasEnvironment.get_dataset(key="optimize.e.t0"))
+        default.append(self.HasEnvironment.get_dataset(key="optimize.e.b0"))
 
         return default
 

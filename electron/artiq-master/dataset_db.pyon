@@ -36,7 +36,7 @@
     "optimize.parameter.pulse_counting_time": 500.0,
     "optimize.parameter.t_acquisition": 100.0,
     "optimize.parameter.t_delay": 600.0,
-    "optimize.parameter.t_load": 50.0,
+    "optimize.parameter.t_load": 100.0,
     "optimize.parameter.t_wait": 100.0,
     "optimize.parameter.trigger_level": 0.3
 }
