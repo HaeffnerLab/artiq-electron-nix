@@ -55,6 +55,7 @@ class Electron(HasEnvironment):
         # # flags: indicating changes from GUI, 1 = there is change that needs to be implemented
         # self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True) # electrode voltages
         # self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True) # experiment parameters
+        # self.set_dataset(key="optimize.flag.stop", value = 0, broadcast=True, persist=True) # whether or not terminate the experiment
 
         # # parameters: t_load(us),t_wait(us),t_delay(ns), t_acquisition(ns),pulse_counting_time(ms), trigger_level (V), # repetitions, # datapoints
         # self.set_dataset(key="optimize.parameter.t_load", value = np.int(100), broadcast=True, persist=True) # t_load(us)
@@ -181,6 +182,10 @@ class Electron(HasEnvironment):
         for i in range(number_of_datapoints):
             flag_dac = np.int32(self.get_dataset(key="optimize.flag.e"))
             flag_parameter = np.int32(self.get_dataset(key="optimize.flag.p"))
+            flag_stop = np.int32(self.get_dataset(key="optimize.flag.stop"))
+            if flag_stop == 1:
+                print("Experiment terminated")
+                return
             if flag_dac == 1:
                 # load dac voltages
                 dac_vs = self.get_dac_vs()
@@ -206,20 +211,27 @@ class Electron(HasEnvironment):
         self.zotino0.load()
 
     @kernel
+    def kernel_run_pulse_counting(self,j,detection_time):
+        self.core.break_realtime()
+        if j== 0:
+            self.ttl8.on() # AOM
+        with parallel:
+            self.ttl10.pulse(2*us) # extraction pulse
+            t_count = self.ttl2.gate_rising(detection_time*ms)
+        self.mutate_dataset('optimize.result.count_tot',j,self.ttl2.count(t_count)/(detection_time*ms))
+
+
     def pulse_counting(self):
         detection_time = np.int32(self.parameter_list[4])
-        print("detectionn_time",detection_time)
-        self.core.reset()
-        self.ttl8.on() # AOM
         # with parallel:
         for j in range(self.number_of_datapoints):
-            self.core.break_realtime()
-            with parallel:
-                self.ttl10.pulse(2*us) # extraction pulse
-                t_count = self.ttl2.gate_rising(detection_time*ms)
-            self.mutate_dataset('optimize.result.count_tot',j,self.ttl2.count(t_count)/(detection_time*ms))
+            flag_stop = np.int32(self.get_dataset(key="optimize.flag.stop"))
+            if flag_stop == 1:
+                print("Experiment terminated")
+                return
+            self.kernel_run_pulse_counting(j,detection_time)
+            
          
-
     @kernel
     def threshold_detector_test(self,trigger_level,number_of_datapoints,number_of_repetitions,t_load,t_wait,t_delay,t_acquisition): # zotino8 for trigger, zotino 6 give 3.3 V
         self.set_dataset('count_threshold',[-200]*number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 from threshold detector
@@ -337,11 +349,14 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tabs.resize(300, 150)
   
         # Add tabs
-        self.tabs.addTab(self.tab1, "ELECTRODES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
+        
         # self.tabs.addTab(self.tab2, "MULTIPOLES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
         # self.tabs.addTab(self.tab3, "PARAMETERS")
         self.tabs.addTab(self.tab4, "Main Experiment") # This tab could mutate dac_voltage, parameters, flags dataset and run_self_updated
+        self.tabs.addTab(self.tab1, "ELECTRODES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
           
+        
+
         '''
         ELECTRODES TAB
         '''
@@ -446,7 +461,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         #set electrode values for dataset
         self.e=self.electrodes
-
+        
 
         '''
         MAIN EXPERIMENT TAB
@@ -623,14 +638,17 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4.addWidget(self.r_button, 13+2, 8)
 
         t_button = QPushButton('Terminate', self)
-        t_button.clicked.connect(self.on_terminate_click_main)
+        t_button.clicked.connect(self.on_terminate_click)
         grid4.addWidget(t_button, 14+2, 8)
 
 
         grid4.setRowStretch(4, 1)
         self.tab4.setLayout(grid4)
 
-       
+
+        
+
+
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)        
@@ -820,6 +838,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
     def long_run_task(self):
+        self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
         self.update_multipoles()
         self.update_parameters()
         self.run_rigol_extraction()
@@ -849,19 +868,28 @@ class MyTabWidget(HasEnvironment,QWidget):
             # lambda: self.lm_button.setEnabled(True),
             # lambda: self.pc_button.setEnabled(True)
             )
+        self.thread.finished.connect(
+            lambda: self.lm_button.setEnabled(True)
+            )
+        self.thread.finished.connect(
+            lambda: self.pc_button.setEnabled(True)
+            )
         # self.thread.finished.connect(
         #     lambda: self.stepLabel.setText("Long-Running Step: 0")
         #     )
 
 
-    def on_terminate_click_main(self):
-        self.HasEnvironment.scheduler.pause()
-        # self.HasEnvironment.core.reset()
+    def on_terminate_click(self):
+        self.HasEnvironment.set_dataset("optimize.flag.stop",1, broadcast=True, persist=True)
         return
 
     def on_pulse_counting_click(self):
 
+        self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
         self.HasEnvironment.get_parameter_list()
+        self.HasEnvironment.core.reset()
+
+        
         self.thread = QThread() # create a QThread object
         self.worker = Worker(self.HasEnvironment.pulse_counting) # create a worker object
         # self.worker = Worker() # create a worker object
@@ -879,9 +907,14 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.pc_button.setEnabled(False)
         self.thread.finished.connect(
             lambda: self.r_button.setEnabled(True)
-            # lambda: self.lm_button.setEnabled(True),
-            # lambda: self.pc_button.setEnabled(True)
             )
+        self.thread.finished.connect(
+            lambda: self.lm_button.setEnabled(True)
+            )
+        self.thread.finished.connect(
+            lambda: self.pc_button.setEnabled(True)
+            )
+
         
     def openFileDialog(self):
         
@@ -917,13 +950,14 @@ class MyTabWidget(HasEnvironment,QWidget):
     def keyPressEvent(self, qKeyEvent):
         print(qKeyEvent.key())
         if qKeyEvent.key() == QtCore.Qt.Key_Return:
+            
             if self.tabs.currentIndex() == 0:
+                self.update_multipoles()
+                self.update_parameters()
+            elif self.tabs.currentIndex() == 1:
                 self.on_voltage_click()
             # elif self.tabs.currentIndex() == 1:
             #     self.on_multipoles_click()
-            elif self.tabs.currentIndex() == 1:
-                self.update_multipoles()
-                self.update_parameters()
             # elif self.tabs.currentIndex() == 1:
                 # self.on_run_click_main()
         else:
