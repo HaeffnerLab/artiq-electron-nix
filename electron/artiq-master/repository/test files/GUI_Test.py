@@ -2,7 +2,7 @@ from artiq.experiment import *
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
-from PyQt5.QtWidgets import QMainWindow, QFileDialog, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QLabel, QGridLayout, QLineEdit, QPlainTextEdit
+from PyQt5.QtWidgets import QMainWindow, QMessageBox, QFileDialog, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QLabel, QComboBox, QGridLayout, QLineEdit, QPlainTextEdit
 import select
 from artiq.experiment import *
 from artiq.coredevice.ad9910 import AD9910, SyncDataEeprom
@@ -12,6 +12,7 @@ from artiq.master.worker_db import DeviceManager
 import time
 import os
 import sys
+import csv
 
 
 
@@ -98,6 +99,15 @@ class Electron(HasEnvironment):
         self.tab_widget = MyTabWidget(self,win)
         win.setCentralWidget(self.tab_widget)
 
+    @ kernel
+    def shut_off(self):
+        self.ttl8.off()
+        self.ttl9.off()
+        self.ttl10.off()
+        self.ttl11.off()
+        self.core.reset()
+
+
     def get_dac_vs(self):
         dac_vs = []
         for i in ["bl"]:
@@ -176,14 +186,16 @@ class Electron(HasEnvironment):
         self.get_parameter_list()
         print("parameter_list",self.parameter_list)
         self.count_tot = 0
-        load_dac = False
         number_of_datapoints = np.int(self.parameter_list[7])
 
         for i in range(number_of_datapoints):
+            load_dac = False
             flag_dac = np.int32(self.get_dataset(key="optimize.flag.e"))
             flag_parameter = np.int32(self.get_dataset(key="optimize.flag.p"))
             flag_stop = np.int32(self.get_dataset(key="optimize.flag.stop"))
             if flag_stop == 1:
+                for j in range(i):
+                    self.mutate_dataset('optimize.result.count_ROI',i,-2)
                 print("Experiment terminated")
                 return
             if flag_dac == 1:
@@ -227,6 +239,8 @@ class Electron(HasEnvironment):
         for j in range(self.number_of_datapoints):
             flag_stop = np.int32(self.get_dataset(key="optimize.flag.stop"))
             if flag_stop == 1:
+                for i in range(j):
+                    self.mutate_dataset('optimize.result.count_tot',i,-100)
                 print("Experiment terminated")
                 return
             self.kernel_run_pulse_counting(j,detection_time)
@@ -602,9 +616,14 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
         
-        # add extraction button
-        v_button = QPushButton('Initialize Rigol', self)
-        v_button.clicked.connect(self.run_rigol_extraction)
+        # # add extraction button
+        # v_button = QPushButton('Initialize Rigol', self)
+        # v_button.clicked.connect(self.run_rigol_extraction)
+        # grid4.addWidget(v_button, 8+2, 8)
+
+        # add shut_off button
+        v_button = QPushButton('Switch off output', self)
+        v_button.clicked.connect(self.HasEnvironment.shut_off)
         grid4.addWidget(v_button, 8+2, 8)
 
         # add multipole button
@@ -641,18 +660,24 @@ class MyTabWidget(HasEnvironment,QWidget):
         t_button.clicked.connect(self.on_terminate_click)
         grid4.addWidget(t_button, 14+2, 8)
 
+        f_button = QPushButton('Data Folder', self)
+        f_button.clicked.connect(self.on_data_folder_click)
+        grid4.addWidget(f_button, 14+1,7)
+
+        d_button = QPushButton('Store Data', self)
+        d_button.clicked.connect(self.on_store_data_click)
+        grid4.addWidget(d_button, 14+2, 7)
+
 
         grid4.setRowStretch(4, 1)
         self.tab4.setLayout(grid4)
-
-
-        
 
 
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)        
         return
+
 
     def get_default_voltages(self):
         default = []
@@ -883,11 +908,90 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.HasEnvironment.set_dataset("optimize.flag.stop",1, broadcast=True, persist=True)
         return
 
+    def on_store_data_click(self):
+
+        dialog = QtWidgets.QDialog()
+        dialog.setWindowTitle("results")
+        form = Ui_Dialog()
+        dialog.ui = form
+        dialog.ui.setupUi(dialog)
+        dialog.exec_()
+        dialog.show()
+        dataset_name = "optimize.result." + form.string_selected
+
+        # DATASETS
+        e_headers = ["b0","bl1","bl2","bl3","bl4","bl5","br1","br2","br3","br5","btr4","t0","tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr5"]
+        m_headers = ["Ex","Ey","Ez","U1","U2","U3","U4","U5","U6"]
+        p_headers = ["number_of_datapoints", "number_of_repetitions","pulse_counting_time","t_acquisition","t_delay","t_load","t_wait","trigger_level"]
+        results = ["count_ROI","count_tot"]
+        all_params = [form.string_selected] + e_headers+m_headers+p_headers
+
+        e_data = []
+        for e in e_headers:
+                temp_string = "optimize.e." + e
+                param_data = self.HasEnvironment.get_dataset(temp_string)
+                e_data.append(param_data)
+        m_data = []
+        for m in m_headers:
+                temp_string = "optimize.multipoles." + m
+                param_data = self.HasEnvironment.get_dataset(temp_string)
+                m_data.append(param_data)
+        p_data = []
+        for p in p_headers:
+                temp_string = "optimize.parameter." + p
+                param_data = self.HasEnvironment.get_dataset(temp_string)
+                p_data.append(param_data)
+
+        dataset = np.array(self.HasEnvironment.get_dataset(dataset_name))
+        
+        # folder to store CSV
+        try:
+            data_folder = self.folder
+        except:    
+            data_folder = "/home/electron/artiq/electron/artiq-master/data" #default path if none is selected 
+
+        # create rows to write csv
+        fields = all_params
+        rows = [] 
+        for r in dataset:
+            ROW = []
+            ROW.append(r)
+            
+            '''
+            for e in e_data:
+                ROW.append(e)
+            for m in m_data:
+                ROW.append(m)
+            for p in p_data:
+                ROW.append(p)
+            '''
+            rows.append(ROW)
+            
+
+        folder_name = form.string_selected + "_results.csv"
+    
+        # name and path of csv file
+        filename = os.path.join(data_folder, folder_name)
+    
+        # writing to csv file 
+        with open(filename, 'w') as csvfile: 
+            # creating a csv writer object 
+            csvwriter = csv.writer(csvfile)     
+            # writing the fields 
+            csvwriter.writerow(fields) 
+            # writing the data rows 
+            csvwriter.writerows(rows)
+
+    def on_data_folder_click(self):
+        print("data folder clicked")
+        self.folder = QFileDialog.getExistingDirectory(self, "Choose Directory", options=QtWidgets.QFileDialog.DontUseNativeDialog)
+
     def on_pulse_counting_click(self):
 
         self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
         self.HasEnvironment.get_parameter_list()
         self.HasEnvironment.core.reset()
+
 
         
         self.thread = QThread() # create a QThread object
@@ -1002,6 +1106,30 @@ class MyTabWidget(HasEnvironment,QWidget):
             col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),int(255*g),0)
             entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
 
+
+class Ui_Dialog(object):
+    def setupUi(self, Dialog):
+        Dialog.setObjectName("Dialog")
+        Dialog.resize(358, 126)
+        self.verticalLayout = QtWidgets.QVBoxLayout(Dialog)
+        self.verticalLayout.setObjectName("verticalLayout")
+        self.horizontalLayout = QtWidgets.QHBoxLayout()
+        self.horizontalLayout.setObjectName("horizontalLayout")
+       
+        self.combo = QComboBox(Dialog)
+        self.combo.addItem("count_ROI")
+        self.string_selected = "count_ROI" #auto select first option
+        self.combo.addItem("count_tot")
+        self.combo.move(50, 50)
+
+        self.qlabel = QLabel()
+        self.qlabel.move(50,16)
+        self.combo.activated[str].connect(self.onChanged)      
+
+    def onChanged(self, text):
+        self.qlabel.setText(text)
+        self.qlabel.adjustSize()
+        self.string_selected = text
 
 # Creating a worker class
 class Worker(QObject):
