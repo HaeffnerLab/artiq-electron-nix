@@ -108,6 +108,14 @@ class Electron(HasEnvironment):
         self.core.reset()
 
 
+    @ kernel
+    def set_threshold_voltages(self):
+        self.core.break_realtime()
+        self.zotino0.init()
+        delay(500*us)
+        self.zotino0.write_dac(6,3.3)
+        self.zotino0.load()
+
     def get_dac_vs(self):
         dac_vs = []
         for i in ["bl"]:
@@ -424,6 +432,7 @@ class MyTabWidget(HasEnvironment,QWidget):
                     grid1.addWidget(spin,ycoord-i,xcoord_entry,1,1)
                     self.electrodes.append(spin)
                     label = QLabel('       '+self.ELECTRODES[el_values][i], self)
+                    label.setAlignment(QtCore.Qt.AlignRight)
                     grid1.addWidget(label,ycoord-i,xcoord_label,1,1)
         
         # append btr4 to self.electrodes  
@@ -433,6 +442,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         # spin_btr4.setValue(self.default_voltages[-3])
         grid1.addWidget(spin_btr4,ycoord-3,xcoord_entry,1,1)
         label = QLabel('       '+'btr4:', self)
+        label.setAlignment(QtCore.Qt.AlignRight)
         grid1.addWidget(label,ycoord-3,xcoord_label,1,1)
         self.electrodes.append(spin_btr4)
         
@@ -448,6 +458,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid1.addWidget(spin_t0,1,3,1,1)
         self.electrodes.append(spin_t0)
         label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
+        label_t0.setAlignment(QtCore.Qt.AlignRight)
         grid1.addWidget(label_t0,1,2)
 
         #b0
@@ -458,6 +469,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid1.addWidget(spin_b0,7,3,1,1)
         self.electrodes.append(spin_b0)
         label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
+        label_b0.setAlignment(QtCore.Qt.AlignRight)
         grid1.addWidget(label_b0,7,2,1,1)        
 
         # add textbox color
@@ -556,20 +568,22 @@ class MyTabWidget(HasEnvironment,QWidget):
                     continue
                 else:     
                     label = QLabel('       '+ self.ELECTRODES[el_values][i], self)
+                    label.setAlignment(QtCore.Qt.AlignRight)
                     grid4.addWidget(label,ycoord-i,xcoord_label, 1,1)
                     # label0 = QLabel('0.00', self)
                     label0 = QLabel(str(self.default_voltages[index_v]), self)
                     index_v += 1
                     self.all_labels.append(label0)
-                    label0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+                    label0.setStyleSheet("border: 1px solid black;")
                     grid4.addWidget(label0,ycoord-i,xcoord_entry,1,1)
           
         
         # append btr4 to self.electrodes
         label = QLabel('       '+ 'btr4:', self)
+        label.setAlignment(QtCore.Qt.AlignRight)
         grid4.addWidget(label,ycoord-3,xcoord_label, 1,1)
         self.label0_btr4 = QLabel(str(self.default_voltages[-3]), self)
-        self.label0_btr4.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+        self.label0_btr4.setStyleSheet("border: 1px solid black;")
         grid4.addWidget(self.label0_btr4,ycoord-3,xcoord_entry,1,1)  
 
         #spacing
@@ -579,17 +593,19 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         #t0
         label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
+        label_t0.setAlignment(QtCore.Qt.AlignRight)
         grid4.addWidget(label_t0,1,2,1,1)
         self.label0_t0 = QLabel(str(self.default_voltages[-2]), self)
-        self.label0_t0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+        self.label0_t0.setStyleSheet("border: 1px solid black;")
         grid4.addWidget(self.label0_t0,1,3,1,1)
 
         
         #b0
         label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
+        label_b0.setAlignment(QtCore.Qt.AlignRight)
         grid4.addWidget(label_b0,7,2,1,1)
         self.label0_b0 = QLabel(str(self.default_voltages[-1]), self)
-        self.label0_b0.setStyleSheet("background-color:lightgreen;  border: 1px solid black;")
+        self.label0_b0.setStyleSheet("border: 1px solid black;")
         grid4.addWidget(self.label0_b0,7,3,1,1)    
 
         #spacing  
@@ -612,6 +628,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             grid4.addWidget(spin,i,8,1,1)
             self.multipoles.append(spin)
             label = QLabel(MULTIPOLES[i], self)
+            label.setAlignment(QtCore.Qt.AlignRight)
             grid4.addWidget(label,i,7,1,1)
 
 
@@ -668,6 +685,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         d_button.clicked.connect(self.on_store_data_click)
         grid4.addWidget(d_button, 14+2, 7)
 
+        t_button = QPushButton('Power threshold detector', self)
+        t_button.clicked.connect(self.set_threshold_voltages)
+        grid4.addWidget(t_button, 14, 7)
+
 
         grid4.setRowStretch(4, 1)
         self.tab4.setLayout(grid4)
@@ -677,6 +698,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)        
         return
+
+    def set_threshold_voltages(self):
+        self.HasEnvironment.set_threshold_voltages()
+
 
 
     def get_default_voltages(self):
@@ -1088,6 +1113,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         
 
     def change_background(self, entry):
+
         if entry.text() == '':
             pass
         else:
@@ -1095,17 +1121,42 @@ class MyTabWidget(HasEnvironment,QWidget):
             a = np.abs(val/10)
 
             if val>0:
-                r = 0
-                g = 1
-            elif val<0:
                 r = 1
-                g = 0
+                b = 0
+                col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),0,int(255*b))
+                entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
+            elif val<0:
+                r = 0
+                b = 1
+                col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),0,int(255*b))
+                entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
             elif val==0:
                 r = 0
-                g = 0
-            col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),int(255*g),0)
-            entry.setStyleSheet(f'QWidget {{background-color: {col};}}')
+                b = 0
+                entry.setStyleSheet(f'QWidget {{background-color: "white";}}')
 
+
+    def change_background_labels(self):
+        for label in self.all_labels:
+            if label == False:
+                label = 0
+            if label.text() == '':
+                pass
+            else:
+                val = float(label.text())
+                a = np.abs(val/10)
+
+                if val>0:
+                    r = 1
+                    b = 0
+                elif val<0:
+                    r = 0
+                    b = 1
+                elif val==0:
+                    r = 0
+                    b = 0
+                col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),0,int(255*b))
+                label.setStyleSheet(f'QWidget {{background-color: {col};}}')
 
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
