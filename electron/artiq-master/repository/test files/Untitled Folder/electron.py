@@ -9,7 +9,6 @@ from artiq.coredevice.ad9910 import AD9910, SyncDataEeprom
 from artiq.coredevice.ad53xx import AD53xx
 from artiq.master.databases import DeviceDB
 from artiq.master.worker_db import DeviceManager
-from datetime import datetime
 import time
 import os
 import sys
@@ -145,7 +144,7 @@ class Electron(HasEnvironment):
         self.parameter_list = parameter_list
 
     @ kernel
-    def kernel_run_optimize (self,i,load_dac,update_cycle):
+    def kernel_run_optimize (self,i,load_dac):
         # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
         pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
         self.core.break_realtime()
@@ -164,42 +163,40 @@ class Electron(HasEnvironment):
                 delay(500*us)
                 self.zotino0.write_dac(pins[pin],self.dac_vs[pin])    
             self.zotino0.load()
-            # print("Loaded dac voltages")
+            print("Loaded dac voltages")
 
-        for k in range(update_cycle):
-            for j in range(number_of_repetitions):
-                self.core.break_realtime()
-                with sequential:
-                    self.ttl8.on()
-                    delay(t_load*us)
-                    with parallel:
-                        self.ttl8.off()
-                        self.ttl9.on()
-                    delay(t_wait*us)
-                    with parallel:
-                        self.ttl9.off()
-                        self.ttl10.pulse(2*us)
-                        with sequential:
-                            # t_extract = self.t_load + self.t_wait + t_delay
-                            delay(t_delay*ns)
-                            t_count = self.ttl2.gate_rising(t_acquisition*ns)
-                    count = self.ttl2.count(t_count)
-                    if count > 0:
-                        count = 1
-                    self.count_tot += count
-                    delay(1*us)
-            self.mutate_dataset('optimize.result.count_ROI',i*update_cycle+k,self.count_tot)
+        for j in range(number_of_repetitions):
+            self.core.break_realtime()
+            with sequential:
+                self.ttl8.on()
+                delay(t_load*us)
+                with parallel:
+                    self.ttl8.off()
+                    self.ttl9.on()
+                delay(t_wait*us)
+                with parallel:
+                    self.ttl9.off()
+                    self.ttl10.pulse(2*us)
+                    with sequential:
+                        # t_extract = self.t_load + self.t_wait + t_delay
+                        delay(t_delay*ns)
+                        t_count = self.ttl2.gate_rising(t_acquisition*ns)
+                count = self.ttl2.count(t_count)
+                if count > 0:
+                    count = 1
+                self.count_tot += count
+                delay(1*us)
+        self.mutate_dataset('optimize.result.count_ROI',i,self.count_tot)
 
     def rolling_optimize(self):
         self.get_dac_vs()
-        # print("dac_vs",self.dac_vs)
+        print("dac_vs",self.dac_vs)
         self.get_parameter_list()
-        # print("parameter_list",self.parameter_list)
+        print("parameter_list",self.parameter_list)
         self.count_tot = 0
         number_of_datapoints = np.int(self.parameter_list[7])
-        update_cycle = 10
 
-        for i in range(int(number_of_datapoints/update_cycle)):
+        for i in range(number_of_datapoints):
             load_dac = False
             flag_dac = np.int32(self.get_dataset(key="optimize.flag.e"))
             flag_parameter = np.int32(self.get_dataset(key="optimize.flag.p"))
@@ -218,7 +215,7 @@ class Electron(HasEnvironment):
                 # t_load, t_wait, t_delay, t_acquisition, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
                 parameter_list = self.get_parameter_list()
                 self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True)
-            self.kernel_run_optimize(i,load_dac,update_cycle)
+            self.kernel_run_optimize(i,load_dac)
 
     
     @ kernel
@@ -234,20 +231,8 @@ class Electron(HasEnvironment):
         self.zotino0.load()
 
     @kernel
-    def kernel_run_pulse_counting(self,j,load_dac,detection_time):
-        pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
+    def kernel_run_pulse_counting(self,j,detection_time):
         self.core.break_realtime()
-
-        if load_dac:
-            self.zotino0.init()
-            self.core.break_realtime() 
-            for pin in range(self.ne):
-                delay(500*us)
-                self.zotino0.write_dac(pins[pin],self.dac_vs[pin])    
-            self.zotino0.load()
-            print("Loaded dac voltages")
-
-        # self.core.break_realtime()
         if j== 0:
             self.ttl8.on() # AOM
         with parallel:
@@ -260,20 +245,13 @@ class Electron(HasEnvironment):
         detection_time = np.int32(self.parameter_list[4])
         # with parallel:
         for j in range(self.number_of_datapoints):
-            load_dac = False
-            flag_dac = np.int32(self.get_dataset(key="optimize.flag.e"))
             flag_stop = np.int32(self.get_dataset(key="optimize.flag.stop"))
             if flag_stop == 1:
                 for i in range(j):
                     self.mutate_dataset('optimize.result.count_tot',i,-100)
                 print("Experiment terminated")
                 return
-            if flag_dac == 1:
-                # load dac voltages
-                dac_vs = self.get_dac_vs()
-                load_dac = True
-                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True)
-            self.kernel_run_pulse_counting(j,load_dac, detection_time)
+            self.kernel_run_pulse_counting(j,detection_time)
             
          
     @kernel
@@ -316,48 +294,6 @@ class Electron(HasEnvironment):
             cycle_duration = t_load+t_wait+2+t_delay/1000+t_acquisition/1000+1
             self.mutate_dataset('count_threshold',i,count_tot)
 
-import vxi11
-import matplotlib.pyplot as plt
-# Control the rigol to give out extraction pulse
-
-class rigol():
-    def __init__(self):
-        # self.sampling_time = sampling_time # 
-        self.offset_ej = 0
-        self.amplitude_ej = 20
-        self.inst = vxi11.Instrument('TCPIP0::192.168.169.113::INSTR')
-        # self.inst2 = vxi11.Instrument('TCPIP0::192.168.169.117::INSTR')
-        # print(self.inst.ask('*IDN?'))
-
-    def run(self, pulse_width_ej, pulse_delay_ej):
-        self.pulse_width_ej = pulse_width_ej
-        self.pulse_delay_ej = pulse_delay_ej
-        inst = self.inst
-        inst.write("OUTPUT2 OFF")
-        inst.write("OUTPUT1 OFF")	
-        # hardcode sampling rate for ejection pulse, since only need the first few hundred ns
-        period_ej = 1000.E-9
-        waveform_ej = np.zeros(500)
-        waveform_ej[:] = -1
-        waveform_ej[np.int(self.pulse_delay_ej/2E-9):np.int((self.pulse_delay_ej+self.pulse_width_ej)/2E-9)] = 1
-        ej_str = ",".join(map(str,waveform_ej))
-        # Channel 2
-        inst.write(":OUTPut2:LOAD INFinity")
-        inst.write("SOURCE2:PERIOD {:.9f}".format(period_ej))
-        # print(inst.ask("SOURCE2:PERIOD?"))
-        inst.write("SOURCE2:VOLTage:UNIT VPP")
-        inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
-        inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
-        inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
-        inst.write("SOURce2:BURSt ON")
-        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
-        inst.write("SOURce2:BURSt:MODE TRIGgered")
-        inst.write("SOURce2:BURSt:NCYCles 1")
-        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
-        inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
-        inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
-        inst.write("OUTPUT2 ON")
-        return
 
 
 # Creating tab widgets
@@ -377,8 +313,7 @@ class MyTabWidget(HasEnvironment,QWidget):
     def run_rigol_extraction(self):
         self.rigol113 =  rigol()
         # parameters for the Rigol waveforms
-        # pulse_width_ej = 20.E-9
-        pulse_width_ej = 500.E-9
+        pulse_width_ej = 20.E-9
         pulse_delay_ej = 2.E-9
         self.rigol113.run(pulse_width_ej, pulse_delay_ej)
 
@@ -972,47 +907,31 @@ class MyTabWidget(HasEnvironment,QWidget):
         m_headers = ["Ex","Ey","Ez","U1","U2","U3","U4","U5","U6"]
         p_headers = ["number_of_datapoints", "number_of_repetitions","pulse_counting_time","t_acquisition","t_delay","t_load","t_wait","trigger_level"]
         results = ["count_ROI","count_tot"]
-        all_params = e_headers+m_headers+p_headers
+        all_params = [form.string_selected] + e_headers+m_headers+p_headers
 
         e_data = []
         for e in e_headers:
                 temp_string = "optimize.e." + e
                 param_data = self.HasEnvironment.get_dataset(temp_string)
-                e_data.append(np.round(param_data,5))
+                e_data.append(param_data)
         m_data = []
         for m in m_headers:
                 temp_string = "optimize.multipoles." + m
                 param_data = self.HasEnvironment.get_dataset(temp_string)
-                m_data.append(np.round(param_data,5))
+                m_data.append(param_data)
         p_data = []
         for p in p_headers:
                 temp_string = "optimize.parameter." + p
                 param_data = self.HasEnvironment.get_dataset(temp_string)
-                p_data.append(np.round(param_data,5))
+                p_data.append(param_data)
 
         dataset = np.array(self.HasEnvironment.get_dataset(dataset_name))
-        param_data = np.array(e_data+m_data+p_data)
         
-        # folder to store all data
+        # folder to store CSV
         try:
             data_folder = self.folder
         except:    
             data_folder = "/home/electron/artiq/electron/artiq-master/data" #default path if none is selected 
-
-        # folder for individual run and params
-        path = os.path.join(data_folder, datetime.now().strftime("%m-%d-%y"))
-
-        #check if path already exist:
-        subfolder = 1
-        orig_path = path
-        if os.path.exists(path) == False:
-            path = orig_path+"_"+str(subfolder)
-
-        while os.path.exists(path):
-            subfolder += 1
-            #create unique name if path exists 
-            path = orig_path+"_"+str(subfolder)
-        os.mkdir(path)
 
         # create rows to write csv
         fields = all_params
@@ -1020,32 +939,31 @@ class MyTabWidget(HasEnvironment,QWidget):
         for r in dataset:
             ROW = []
             ROW.append(r)
+            
+            '''
+            for e in e_data:
+                ROW.append(e)
+            for m in m_data:
+                ROW.append(m)
+            for p in p_data:
+                ROW.append(p)
+            '''
             rows.append(ROW)
+            
 
         folder_name = form.string_selected + "_results.csv"
-        param_folder_name = form.string_selected + "_params.csv"
     
-        # name and path of csv files
-        filename = os.path.join(path, folder_name)
-        param_filename = os.path.join(path, param_folder_name)
+        # name and path of csv file
+        filename = os.path.join(data_folder, folder_name)
     
-        # writing to data csv  
+        # writing to csv file 
         with open(filename, 'w') as csvfile: 
-            # creating a csv writer object 
-            csvwriter = csv.writer(csvfile)     
-            # writing the fields 
-            csvwriter.writerow([fields[0]]) 
-            # writing the data rows 
-            csvwriter.writerows(rows)
-
-        # write to param csv
-        with open(param_filename, 'w') as csvfile: 
             # creating a csv writer object 
             csvwriter = csv.writer(csvfile)     
             # writing the fields 
             csvwriter.writerow(fields) 
             # writing the data rows 
-            csvwriter.writerow(param_data)
+            csvwriter.writerows(rows)
 
     def on_data_folder_click(self):
         print("data folder clicked")
