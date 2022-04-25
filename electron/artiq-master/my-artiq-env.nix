@@ -23,11 +23,11 @@ in
 
         # The NixOS package collection contains many other packages that you may find
         # interesting for your research. Here are some examples:
-        #ps.pandas
+        ps.pandas
         ps.numpy
         ps.vxi11
         #ps.PyQt5
-        #ps.scipy
+        ps.scipy
         #ps.numba
         (ps.matplotlib.override { enableQt = true; })
         #ps.bokeh

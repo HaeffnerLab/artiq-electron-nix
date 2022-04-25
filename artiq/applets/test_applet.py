@@ -6,8 +6,10 @@ import pyqtgraph
 
 from artiq.applets.simple import TitleApplet
 
+print("applet running")
 
-class XYPlot(pyqtgraph.PlotWidget):
+
+class XYELECTRON(pyqtgraph.PlotWidget):
     def __init__(self, args):
         pyqtgraph.PlotWidget.__init__(self)
         self.args = args
@@ -37,7 +39,11 @@ class XYPlot(pyqtgraph.PlotWidget):
                 return
 
         self.clear()
-        self.plot(x, y, pen=None, symbol="x")
+        self.plt=self.plot(x, y, pen=None, symbol="x", name="Y Counts")
+        #self.legend = self.LegendItem()
+        self.legend = self.addLegend(offset=(0, 0))
+        #self.legend.setParentItem(self.plt)
+        #self.plt.addLegend()
         self.setTitle(title)
         if error is not None:
             # See https://github.com/pyqtgraph/pyqtgraph/issues/211
@@ -52,7 +58,7 @@ class XYPlot(pyqtgraph.PlotWidget):
 
 
 def main():
-    applet = TitleApplet(XYPlot)
+    applet = TitleApplet(XYELECTRON)
     applet.add_dataset("y", "Y values")
     applet.add_dataset("x", "X values", required=False)
     applet.add_dataset("error", "Error bars for each X value", required=False)
@@ -61,3 +67,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

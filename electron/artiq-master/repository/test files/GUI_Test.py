@@ -16,9 +16,6 @@ import sys
 import csv
 
 
-
-
-
 class Electron(HasEnvironment):
     def build(self):
         self.setattr_device('core')
@@ -28,7 +25,10 @@ class Electron(HasEnvironment):
         self.setattr_device('ttl9') # use this channel to trigger R&S for tickle pulse, connect to R&S
         self.setattr_device('ttl10') # use this channel to trigger extraction pulse, connect to RIGOL external trigger
         self.setattr_device('ttl11') # use this channel to reset threshold detector, connect to reset of threshold detector
+        self.setattr_device("ttl12")  # sending ttl to shutter motor servo 390
+        self.setattr_device("ttl13")  # sending ttl to shutter motor servo 422
         self.setattr_device('scheduler') # scheduler used
+        self.setattr_device("sampler0")
 
         self.setattr_argument('number_of_datapoints', NumberValue(default=5000,unit=' ',scale=1,ndecimals=0,step=1)) #how many data points on the plot, run experiment & pulse counting
         # self.setattr_argument('time_count', NumberValue(default=5000,unit='number of counts',scale=1,ndecimals=0,step=1)) #how many indices you have in time axis, pulse counting
@@ -70,7 +70,8 @@ class Electron(HasEnvironment):
         # self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(5000), broadcast=True, persist=True) # number of datapoints
 
         # results:
-        self.set_dataset('optimize.result.count_tot',[-100]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2
+        self.set_dataset('optimize.result.count_tot',[-100]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 in pusle counting
+        self.set_dataset('optimize.result.count_PI',[-10]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 in shutter optimize
         self.set_dataset('optimize.result.count_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI in optimize
         self.set_dataset('count_threshold',[-200]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 from threshold detector
 
@@ -234,6 +235,81 @@ class Electron(HasEnvironment):
         self.zotino0.load()
 
     @kernel
+    def kernel_run_shutter_optimize(self, j=0, load_dac=False, N=20, detection_time=500):
+        '''N is the number of datapoints taken for each configuration
+        '''
+
+        pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
+        self.core.break_realtime()
+
+        if load_dac:
+            self.zotino0.init()
+            self.core.break_realtime() 
+            for pin in range(self.ne):
+                delay(500*us)
+                self.zotino0.write_dac(pins[pin],self.dac_vs[pin])    
+            self.zotino0.load()
+            print("Loaded dac voltages")
+        
+        # self.core.break_realtime()
+        if j == 0:
+            self.ttl8.on()
+
+        # count electrons with both 422 and 390 on
+        count_on = 0
+        count_off = 0
+        for i in range(N):
+            with parallel:
+                self.ttl10.pulse(2*us)
+                t_count = self.ttl2.gate_rising(detection_time*ms)
+            count_on += self.ttl2.count(t_count)/(detection_time*ms)
+            self.mutate_dataset('optimize.result.count_PI',i+j*2*N,self.ttl2.count(t_count)/(detection_time*ms))
+
+        # then block 390 to count 422 background scatter              
+        self.ttl12.off()   
+        self.ttl12.pulse(100*ms)
+        delay(20*ms)
+        self.ttl12.pulse(100*ms)
+        delay(2*s) # it takes a long time for the motor to rotate
+
+
+        # count electrons with only 422
+        for i in range(N):
+            with parallel:
+                self.ttl10.pulse(2*us)
+                t_count = self.ttl2.gate_rising(detection_time*ms)
+            count_off += self.ttl2.count(t_count)/(detection_time*ms)
+            self.mutate_dataset('optimize.result.count_PI',i+N+j*2*N,self.ttl2.count(t_count)/(detection_time*ms))
+
+        count_PI = (count_on-count_off)/N
+        print(f"PI electrons = {count_PI}")
+
+
+    def shutter_optimize(self):
+        detection_time = np.int32(self.parameter_list[4])
+        # with parallel:
+        N = 20
+        for j in range(int(self.number_of_datapoints/2/N)):
+            print("Move the stage:")
+            sleep(5) # wait for the user to move the stage
+            load_dac = False
+            flag_dac = np.int32(self.get_dataset(key="optimize.flag.e"))
+            flag_stop = np.int32(self.get_dataset(key="optimize.flag.stop"))
+            if flag_stop == 1:
+                for i in range(j*2*N):
+                    self.mutate_dataset('optimize.result.count_PI',i,-100)
+                print("Experiment terminated")
+                return
+            if flag_dac == 1:
+                # load dac voltages
+                dac_vs = self.get_dac_vs()
+                load_dac = True
+                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True)
+            print("Start counting...")
+            self.kernel_run_shutter_optimize(j,load_dac, N, detection_time)
+
+
+    @kernel
     def kernel_run_pulse_counting(self,j,load_dac,detection_time):
         pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
         self.core.break_realtime()
@@ -316,6 +392,7 @@ class Electron(HasEnvironment):
             cycle_duration = t_load+t_wait+2+t_delay/1000+t_acquisition/1000+1
             self.mutate_dataset('count_threshold',i,count_tot)
 
+
 import vxi11
 import matplotlib.pyplot as plt
 # Control the rigol to give out extraction pulse
@@ -323,8 +400,18 @@ import matplotlib.pyplot as plt
 class rigol():
     def __init__(self):
         # self.sampling_time = sampling_time # 
-        self.offset_ej = 0
-        self.amplitude_ej = 20
+        
+
+        # # initial phase = 0, voltage -10 ~ 10 V, after T, 0 ~ 10 V
+        # self.offset_ej = 0
+        # self.amplitude_ej = 20
+        # self.phase = 0
+
+        # initial phase != 0, voltage 0 ~ -10 V, need to manually adjust and see on the scope or AWG
+        self.offset_ej = -5
+        self.amplitude_ej = 10
+        self.phase = 270
+
         self.inst = vxi11.Instrument('TCPIP0::192.168.169.113::INSTR')
         # self.inst2 = vxi11.Instrument('TCPIP0::192.168.169.117::INSTR')
         # print(self.inst.ask('*IDN?'))
@@ -349,8 +436,55 @@ class rigol():
         inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
         inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
         inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
         inst.write("SOURce2:BURSt ON")
         # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        # inst.write("SOURce2:BURSt:GATE:POL INVerted")
+
+        inst.write("SOURce2:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        inst.write("SOURce2:BURSt:MODE TRIGgered")
+        inst.write("SOURce2:BURSt:NCYCles 1")
+        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
+        inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
+        inst.write("OUTPUT2 ON")
+        return
+
+    def run(self, pulse_width_ej, pulse_delay_ej,offset_ej,amplitude_ej,phase):
+        self.offset_ej = offset_ej
+        self.amplitude_ej = amplitude_ej
+        self.phase = phase
+        self.pulse_width_ej = pulse_width_ej
+        self.pulse_delay_ej = pulse_delay_ej
+        inst = self.inst
+        inst.write("OUTPUT2 OFF")
+        inst.write("OUTPUT1 OFF")   
+        # hardcode sampling rate for ejection pulse, since only need the first few hundred ns
+        period_ej = 1000.E-9
+        waveform_ej = np.zeros(500)
+        waveform_ej[:] = -1
+        waveform_ej[np.int(self.pulse_delay_ej/2E-9):np.int((self.pulse_delay_ej+self.pulse_width_ej)/2E-9)] = 1
+        ej_str = ",".join(map(str,waveform_ej))
+        # Channel 2
+        inst.write(":OUTPut2:LOAD INFinity")
+        inst.write("SOURCE2:PERIOD {:.9f}".format(period_ej))
+        # print(inst.ask("SOURCE2:PERIOD?"))
+        inst.write("SOURCE2:VOLTage:UNIT VPP")
+        inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
+        inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
+        inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
+        inst.write("SOURce2:BURSt ON")
+        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        # inst.write("SOURce2:BURSt:GATE:POL INVerted")
+
+        inst.write("SOURce2:BURSt:PHASe {:.3f}".format(self.phase))
+
+
         inst.write("SOURce2:BURSt:MODE TRIGgered")
         inst.write("SOURce2:BURSt:NCYCles 1")
         # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
@@ -374,12 +508,12 @@ class MyTabWidget(HasEnvironment,QWidget):
     def set_dac_voltages(self,dac_vs):
         self.HasEnvironment.set_dac_voltages(dac_vs)
 
-    def run_rigol_extraction(self):
+    def run_rigol_extraction(self, pulse_width_ej = 800.E-9, pulse_delay_ej = 2.E-9):
         self.rigol113 =  rigol()
         # parameters for the Rigol waveforms
         # pulse_width_ej = 20.E-9
-        pulse_width_ej = 500.E-9
-        pulse_delay_ej = 2.E-9
+        # pulse_width_ej = 800.E-9 # eject positive V, width = width; eject negative, actual width = 1000ns - set_value
+        # pulse_delay_ej = 2.E-9
         self.rigol113.run(pulse_width_ej, pulse_delay_ej)
 
     def setup_UI(self):
@@ -399,6 +533,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         # self.tabs.addTab(self.tab3, "PARAMETERS")
         self.tabs.addTab(self.tab4, "Main Experiment") # This tab could mutate dac_voltage, parameters, flags dataset and run_self_updated
         self.tabs.addTab(self.tab1, "ELECTRODES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
+        self.tabs.addTab(self.tab5, "DEVICES")
+    
           
         
 
@@ -712,15 +848,64 @@ class MyTabWidget(HasEnvironment,QWidget):
         t_button.clicked.connect(self.set_threshold_voltages)
         grid4.addWidget(t_button, 14, 7)
 
+        t_button = QPushButton('Shutter optimize', self)
+        t_button.clicked.connect(self.HasEnvironment.kernel_run_shutter_optimize)
+        grid4.addWidget(t_button, 14-1, 7)
+
 
         grid4.setRowStretch(4, 1)
         self.tab4.setLayout(grid4)
+
+        '''
+        DEVICE TAB
+        '''
+        grid5 = QGridLayout() #make grid layout
+        
+        self.device_parameter_list = []  
+        rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:']
+        rigol_DEFAULTS = [800, 2, -5, 10, 270]
+
+        for i in range(len(rigol_PARAMETERS)):  
+            spin = QtWidgets.QSpinBox(self)
+            spin.setRange(-1000,1000)
+            spin.setSingleStep(10)
+            spin.setValue(rigol_DEFAULTS[i]) # set default values
+            grid5.addWidget(spin,i+13,1,1,1)
+            self.device_parameter_list.append(spin)
+            label = QLabel('    '+rigol_PARAMETERS[i], self)
+            grid5.addWidget(label,i+13,0,1,1)
+          
+        #spacing
+        label_gap = QLabel('', self)
+        grid5.addWidget(label_gap,0,2,1,2)
+        
+        # add extraction button
+        v_button = QPushButton('Run Rigol Extraction', self)
+        v_button.clicked.connect(self.run_rigol_extraction_device_tab)
+        grid5.addWidget(v_button, 8+2, 8)
+
+        grid5.setRowStretch(4, 1)
+        self.tab5.setLayout(grid5)
 
 
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)        
         return
+
+    def run_rigol_extraction_device_tab(self):
+        self.dev_list = []
+        for m in self.device_parameter_list:
+            text = m.text() or "0"
+            self.dev_list.append(float(text))
+        pulse_width_ej = self.dev_list[0]*1e-9
+        pulse_delay_ej = self.dev_list[1]*1e-9
+        offset_ej = self.dev_list[2]
+        amplitude_ej = self.dev_list[3]
+        phase = self.dev_list[4]
+        self.rigol113 =  rigol()
+        self.rigol113.run(pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase)
+
 
     def set_threshold_voltages(self):
         self.HasEnvironment.set_threshold_voltages()
@@ -1056,9 +1241,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
         self.HasEnvironment.get_parameter_list()
         self.HasEnvironment.core.reset()
-
-
-        
+   
         self.thread = QThread() # create a QThread object
         self.worker = Worker(self.HasEnvironment.pulse_counting) # create a worker object
         # self.worker = Worker() # create a worker object
