@@ -37,7 +37,8 @@ class Electron(HasEnvironment):
         
         # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
         # pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
-        
+        # for i in ['Grid', 'Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']:
+            # self.set_dataset(key="optimize.multipoles."+i, value=np.float32(0), broadcast=True, persist=True)
         # for i in ["bl"]:
         #     for j in ["1","2","3","4","5"]:
         #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
@@ -776,12 +777,15 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4.addWidget(label_gap,11,6,2,1)
     
         #create multipole text entry boxes
-        MULTIPOLES = ['Ex:', 'Ey:', 'Ez:', 'U1:', 'U2:', 'U3:', 'U4:', 'U5:', 'U6:']
+        MULTIPOLES = ['Grid: (V)','Ex:', 'Ey:', 'Ez:', 'U1:', 'U2:', 'U3:', 'U4:', 'U5:', 'U6:']
         self.multipoles = []
         self.default_multipoles = self.get_default_multipoles()
         for i in range(len(MULTIPOLES)):  
             spin = QtWidgets.QDoubleSpinBox(self)
-            spin.setRange(-10,10)
+            if MULTIPOLES[i] == 'Grid: (V)':
+                spin.setRange(0,300)
+            else:
+                spin.setRange(-10,10)
             spin.setSingleStep(0.01)
             spin.setValue(self.default_multipoles[i])
             grid4.addWidget(spin,i,8,1,1)
@@ -940,7 +944,8 @@ class MyTabWidget(HasEnvironment,QWidget):
 
     def get_default_multipoles(self):
         default = []
-        for i in ['Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']:
+        for i in ['Grid', 'Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']:
+            # default.append(0)
             default.append(self.HasEnvironment.get_dataset("optimize.multipoles."+i))
         return default
 
@@ -958,15 +963,19 @@ class MyTabWidget(HasEnvironment,QWidget):
             text = m.text() or "0"
             self.mul_list.append(float(text))
 
-        for i, value in enumerate(['Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']):
+        for i, value in enumerate(['Grid','Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']):
             self.HasEnvironment.set_dataset("optimize.multipoles."+value,self.mul_list[i], broadcast=True, persist=True)
-        
+        grid_V = self.mul_list[0]
+
         # Calculate and print electrode values
         try:
-            self.m=np.array([self.mul_list])
+            self.m=np.array([self.mul_list[1:]])
+            grid_multipole_1V = np.array([5.74825920e-05 ,5.96780638e-06 ,1.26753930e-05,-1.32588496e-04,-9.81277203e-05,2.83539744e-05,1.17764523e-05,4.47353980e-05,1.24182868e-05])
+            grid_multipole = [g*grid_V for g in grid_multipole_1V]
+            self.m=self.m-grid_multipole
             self.e=np.matmul(self.m, self.C_Matrix_np)
         except:
-            f = open('/home/electron/artiq/electron/Cfile_v2.txt','r')
+            f = open('/home/electron/artiq/electron/Cfile_electron_gen2_v-1_btr4.txt','r')
             # create list of lines from selected textfile
             self.list_of_lists = []
             for line in f:
@@ -985,10 +994,11 @@ class MyTabWidget(HasEnvironment,QWidget):
                 self.C_Matrix.append(C_row) 
                 
             self.C_Matrix_np = np.array(self.C_Matrix)
-            self.m=np.array([self.mul_list])
+            self.m=np.array([self.mul_list[1:]])
             #print(shape(self.m))
-            grid_multipole = np.array([0.00862239,0.00089517,0.0019013,-0.01988827,-0.01471916,0.0042531,0.00176647,0.00671031,0.00186274])
-            
+            # grid_V = 150
+            grid_multipole_1V = np.array([5.74825920e-05 ,5.96780638e-06 ,1.26753930e-05,-1.32588496e-04,-9.81277203e-05,2.83539744e-05,1.17764523e-05,4.47353980e-05,1.24182868e-05])
+            grid_multipole = [g*grid_V for g in grid_multipole_1V]
             self.m=self.m-grid_multipole
             self.e=np.matmul(self.m, self.C_Matrix_np)
             
@@ -1154,7 +1164,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         # DATASETS
         e_headers = ["b0","bl1","bl2","bl3","bl4","bl5","br1","br2","br3","br5","btr4","t0","tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr5"]
-        m_headers = ["Ex","Ey","Ez","U1","U2","U3","U4","U5","U6"]
+        m_headers = ["Grid","Ex","Ey","Ez","U1","U2","U3","U4","U5","U6"]
         p_headers = ["number_of_datapoints", "number_of_repetitions","pulse_counting_time","t_acquisition","t_delay","t_load","t_wait","trigger_level"]
         results = ["count_ROI","count_tot"]
         all_params = e_headers+m_headers+p_headers
