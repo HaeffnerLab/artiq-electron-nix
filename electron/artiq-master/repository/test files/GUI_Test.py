@@ -76,8 +76,10 @@ class Electron(HasEnvironment):
         self.set_dataset('optimize.result.count_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI in optimize
         self.set_dataset('count_threshold',[-200]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 from threshold detector
 
-        self.ne = 21 # number of electrodes
+        
         self.np = 8 # number of experiment parameters
+        self.pins = [13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
+        self.ne = int(len(self.pins)) # number of electrodes
     
     def launch_GUI(self):       
         #launch GUI
@@ -149,7 +151,7 @@ class Electron(HasEnvironment):
     @ kernel
     def kernel_run_optimize (self,i,load_dac,update_cycle):
         # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
-        pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
+        
         self.core.break_realtime()
 
         t_load = np.int32(self.parameter_list[0])
@@ -164,7 +166,7 @@ class Electron(HasEnvironment):
             self.core.break_realtime() 
             for pin in range(self.ne):
                 delay(500*us)
-                self.zotino0.write_dac(pins[pin],self.dac_vs[pin])    
+                self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])    
             self.zotino0.load()
             # print("Loaded dac voltages")
 
@@ -199,7 +201,7 @@ class Electron(HasEnvironment):
         # print("parameter_list",self.parameter_list)
         self.count_tot = 0
         number_of_datapoints = np.int(self.parameter_list[7])
-        update_cycle = 10
+        update_cycle = 10 # artiq will check for user update every 10 experiment cycles
 
         for i in range(int(number_of_datapoints/update_cycle)):
             load_dac = False
@@ -207,18 +209,18 @@ class Electron(HasEnvironment):
             flag_parameter = np.int32(self.get_dataset(key="optimize.flag.p"))
             flag_stop = np.int32(self.get_dataset(key="optimize.flag.stop"))
             if flag_stop == 1:
-                for j in range(i):
-                    self.mutate_dataset('optimize.result.count_ROI',i,-2)
+                for j in range(i*update_cycle):
+                    self.mutate_dataset('optimize.result.count_ROI',j,-2)
                 print("Experiment terminated")
                 return
             if flag_dac == 1:
                 # load dac voltages
-                dac_vs = self.get_dac_vs()
+                self.get_dac_vs()
                 load_dac = True
                 self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True)
             if flag_parameter == 1:
                 # t_load, t_wait, t_delay, t_acquisition, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
-                parameter_list = self.get_parameter_list()
+                self.get_parameter_list()
                 self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True)
             self.kernel_run_optimize(i,load_dac,update_cycle)
 
@@ -226,13 +228,14 @@ class Electron(HasEnvironment):
     @ kernel
     def set_dac_voltages(self,dac_vs):
         # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
-        pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
-        self.core.reset()
-        self.zotino0.init()
+        # pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
+        # self.core.reset()
         self.core.break_realtime() 
-        for pin in range(len(pins)):
+        self.zotino0.init()
+        # self.core.break_realtime() 
+        for pin in range(self.ne):
             delay(500*us)
-            self.zotino0.write_dac(pins[pin],dac_vs[pin])    
+            self.zotino0.write_dac(self.pins[pin],dac_vs[pin])    
         self.zotino0.load()
 
     @kernel
@@ -240,7 +243,6 @@ class Electron(HasEnvironment):
         '''N is the number of datapoints taken for each configuration
         '''
 
-        pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
         self.core.break_realtime()
 
         if load_dac:
@@ -248,7 +250,7 @@ class Electron(HasEnvironment):
             self.core.break_realtime() 
             for pin in range(self.ne):
                 delay(500*us)
-                self.zotino0.write_dac(pins[pin],self.dac_vs[pin])    
+                self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])    
             self.zotino0.load()
             print("Loaded dac voltages")
         
@@ -312,20 +314,18 @@ class Electron(HasEnvironment):
 
     @kernel
     def kernel_run_pulse_counting(self,j,load_dac,detection_time):
-        pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
         self.core.break_realtime()
-
         if load_dac:
             self.zotino0.init()
             self.core.break_realtime() 
             for pin in range(self.ne):
                 delay(500*us)
-                self.zotino0.write_dac(pins[pin],self.dac_vs[pin])    
+                self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])    
             self.zotino0.load()
             print("Loaded dac voltages")
 
         # self.core.break_realtime()
-        if j== 0:
+        if j == 0:
             self.ttl8.on() # AOM
         with parallel:
             self.ttl10.pulse(2*us) # extraction pulse
@@ -393,16 +393,63 @@ class Electron(HasEnvironment):
             cycle_duration = t_load+t_wait+2+t_delay/1000+t_acquisition/1000+1
             self.mutate_dataset('count_threshold',i,count_tot)
 
-
 import vxi11
 import matplotlib.pyplot as plt
-# Control the rigol to give out extraction pulse
 
+class rigol():
+    def __init__(self,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=10,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
+        # self.sampling_time = sampling_time # 
+        
+        # initial phase != 0, voltage 0 ~ -10 V, need to manually adjust and see on the scope or AWG
+        self.pulse_width_ej = pulse_width_ej
+        self.pulse_delay_ej = pulse_delay_ej
+        self.offset_ej = offset_ej
+        self.amplitude_ej = amplitude_ej
+        self.phase = phase
+        self.period_ej = period_ej
+        self.sampling_time = sampling_time
+        self.inst = vxi11.Instrument('TCPIP0::192.168.169.113::INSTR')
+       
+
+    def run(self):
+        inst = self.inst
+        inst.write("OUTPUT2 OFF")
+        inst.write("OUTPUT1 OFF")   
+        # hardcode sampling rate for ejection pulse, since only need the first few hundred ns
+        waveform_ej = np.zeros(int(self.period_ej/self.sampling_time))
+        waveform_ej[:] = -1
+        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = 1
+        ej_str = ",".join(map(str,waveform_ej))
+        # Channel 2
+        inst.write(":OUTPut2:LOAD INFinity")
+        inst.write("SOURCE2:PERIOD {:.9f}".format(self.period_ej))
+        # print(inst.ask("SOURCE2:PERIOD?"))
+        inst.write("SOURCE2:VOLTage:UNIT VPP")
+        inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
+        inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
+        inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
+        inst.write("SOURce2:BURSt ON")
+        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        # inst.write("SOURce2:BURSt:GATE:POL INVerted")
+
+        inst.write("SOURce2:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        inst.write("SOURce2:BURSt:MODE TRIGgered")
+        inst.write("SOURce2:BURSt:NCYCles 1")
+        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
+        inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
+        inst.write("OUTPUT2 ON")
+        return
+
+# Control the rigol to give out extraction pulse
+'''
 class rigol():
     def __init__(self):
         # self.sampling_time = sampling_time # 
-        
-
         # # initial phase = 0, voltage -10 ~ 10 V, after T, 0 ~ 10 V
         # self.offset_ej = 0
         # self.amplitude_ej = 20
@@ -493,7 +540,7 @@ class rigol():
         inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
         inst.write("OUTPUT2 ON")
         return
-
+'''
 
 # Creating tab widgets
 class MyTabWidget(HasEnvironment,QWidget):
@@ -509,13 +556,14 @@ class MyTabWidget(HasEnvironment,QWidget):
     def set_dac_voltages(self,dac_vs):
         self.HasEnvironment.set_dac_voltages(dac_vs)
 
-    def run_rigol_extraction(self, pulse_width_ej = 800.E-9, pulse_delay_ej = 2.E-9):
-        self.rigol113 =  rigol()
-        # parameters for the Rigol waveforms
-        # pulse_width_ej = 20.E-9
-        # pulse_width_ej = 800.E-9 # eject positive V, width = width; eject negative, actual width = 1000ns - set_value
-        # pulse_delay_ej = 2.E-9
-        self.rigol113.run(pulse_width_ej, pulse_delay_ej)
+    # def run_rigol_extraction(self, pulse_width_ej = 800.E-9, pulse_delay_ej = 2.E-9):
+    #     self.rigol113 =  rigol()
+    #     # parameters for the Rigol waveforms
+    #     # pulse_width_ej = 20.E-9
+    #     # pulse_width_ej = 800.E-9 # eject positive V, width = width; eject negative, actual width = 1000ns - set_value
+    #     # pulse_delay_ej = 2.E-9
+    #     self.rigol113.run(pulse_width_ej, pulse_delay_ej,offset_ej=-5,amplitude_ej=10,phase=270)
+
 
     def setup_UI(self):
   
@@ -866,18 +914,18 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid5 = QGridLayout() #make grid layout
         
         self.device_parameter_list = []  
-        rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:']
-        rigol_DEFAULTS = [800, 2, -5, 10, 270]
+        rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):']
+        rigol_DEFAULTS = [800, 2, -5, 10, 270,1000,2]
 
         for i in range(len(rigol_PARAMETERS)):  
             spin = QtWidgets.QSpinBox(self)
-            spin.setRange(-1000,1000)
+            spin.setRange(-1E6,1E6)
             spin.setSingleStep(10)
             spin.setValue(rigol_DEFAULTS[i]) # set default values
-            grid5.addWidget(spin,i+13,1,1,1)
+            grid5.addWidget(spin,i+11,1,1,1)
             self.device_parameter_list.append(spin)
             label = QLabel('    '+rigol_PARAMETERS[i], self)
-            grid5.addWidget(label,i+13,0,1,1)
+            grid5.addWidget(label,i+11,0,1,1)
           
         #spacing
         label_gap = QLabel('', self)
@@ -907,8 +955,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         offset_ej = self.dev_list[2]
         amplitude_ej = self.dev_list[3]
         phase = self.dev_list[4]
-        self.rigol113 =  rigol()
-        self.rigol113.run(pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase)
+        period_ej = self.dev_list[5]*1e-9
+        sampling_time = self.dev_list[6]*1e-9
+        self.rigol113 =  rigol(pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
+        self.rigol113.run()
 
 
     def set_threshold_voltages(self):
@@ -1109,7 +1159,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
         self.update_multipoles()
         self.update_parameters()
-        self.run_rigol_extraction()
+        # self.run_rigol_extraction()
+        self.run_rigol_extraction_device_tab()
         self.HasEnvironment.core.reset()
         self.HasEnvironment.rolling_optimize()
         return
