@@ -136,8 +136,10 @@ class Electron(HasEnvironment):
             for j in ["1","2","3","5"]:
                 dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
         dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
+        # self.set_dataset(key="optimize.e.t0",value = -9.00, broadcast=True, persist=True)
         dac_vs.append(self.get_dataset(key="optimize.e.t0"))
         dac_vs.append(self.get_dataset(key="optimize.e.b0"))
+        
         self.dac_vs = dac_vs
         # return dac_vs
 
@@ -327,10 +329,21 @@ class Electron(HasEnvironment):
         # self.core.break_realtime()
         if j == 0:
             self.ttl8.on() # AOM
-        with parallel:
-            self.ttl10.pulse(2*us) # extraction pulse
-            t_count = self.ttl2.gate_rising(detection_time*ms)
-        self.mutate_dataset('optimize.result.count_tot',j,self.ttl2.count(t_count)/(detection_time*ms))
+        # with parallel:
+        #     self.ttl10.pulse(2*us) # extraction pulse
+        #     t_count = self.ttl2.gate_rising(detection_time*ms)
+
+        # self.mutate_dataset('optimize.result.count_tot',j,self.ttl2.count(t_count)/(detection_time*ms))
+
+        count = 0
+        for i in range(5000):
+            self.core.break_realtime()
+            with parallel:
+                self.ttl10.pulse(2*us) # extraction pulse
+                t_count = self.ttl2.gate_rising(100*us)
+            count += self.ttl2.count(t_count)
+
+        self.mutate_dataset('optimize.result.count_tot',j,count/(detection_time*ms))
 
 
     def pulse_counting(self):
@@ -574,6 +587,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tab3 = QWidget()
         self.tab4 = QWidget()
         self.tab5 = QWidget()
+        self.tab6 = QWidget()
         self.tabs.resize(300, 150)
   
         # Add tabs
@@ -583,6 +597,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tabs.addTab(self.tab4, "Main Experiment") # This tab could mutate dac_voltage, parameters, flags dataset and run_self_updated
         self.tabs.addTab(self.tab1, "ELECTRODES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
         self.tabs.addTab(self.tab5, "DEVICES")
+        self.tabs.addTab(self.tab6, "Cryostat")
     
           
         
@@ -914,12 +929,13 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid5 = QGridLayout() #make grid layout
         
         self.device_parameter_list = []  
-        rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):']
-        rigol_DEFAULTS = [800, 2, -5, 10, 270,1000,2]
+        # rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):']
+        rigol_PARAMETERS = ['Offset width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Ejection pulse width (ns):','Sampling time (ns):'] # make it to be less confusing
+        rigol_DEFAULTS = [10, 0, -5, 10, 0,100,2]
 
         for i in range(len(rigol_PARAMETERS)):  
             spin = QtWidgets.QSpinBox(self)
-            spin.setRange(-1E6,1E6)
+            spin.setRange(-1E6,1E9)
             spin.setSingleStep(10)
             spin.setValue(rigol_DEFAULTS[i]) # set default values
             grid5.addWidget(spin,i+11,1,1,1)
