@@ -34,6 +34,9 @@ class Electron(HasEnvironment):
         # self.setattr_argument('time_count', NumberValue(default=5000,unit='number of counts',scale=1,ndecimals=0,step=1)) #how many indices you have in time axis, pulse counting
 
     def prepare(self):
+        
+        # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
+        # pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
         # for i in ['Grid', 'Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']:
             # self.set_dataset(key="optimize.multipoles."+i, value=np.float32(0), broadcast=True, persist=True)
         # for i in ["bl"]:
@@ -48,7 +51,7 @@ class Electron(HasEnvironment):
         # for i in ["tr"]:
         #     for j in ["1","2","3","5"]:
         #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
-        # self.set_dataset(key="optimize.e.btr4", value=np.float32(0), broadcast=True, persist=False)
+        # self.set_dataset(key="optimize.e.btr4", value=np.float32(0), broadcast=True, persist=True)
         # self.set_dataset(key="optimize.e.t0", value=np.float32(0), broadcast=True, persist=True)
         # self.set_dataset(key="optimize.e.b0", value=np.float32(0), broadcast=True, persist=True)
         
@@ -67,26 +70,16 @@ class Electron(HasEnvironment):
         # self.set_dataset(key="optimize.parameter.number_of_repetitions", value = np.int(1000), broadcast=True, persist=True) # number of repetitions
         # self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(5000), broadcast=True, persist=True) # number of datapoints
 
-
-        # self.set_dataset(key="optimize.e.br4", value=np.float32(0), broadcast=True, persist=True)
-        # self.set_dataset(key="optimize.e.tr4", value=np.float32(0), broadcast=True, persist=True)
-
-
         # results:
         self.set_dataset('optimize.result.count_tot',[-100]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 in pusle counting
         self.set_dataset('optimize.result.count_PI',[-10]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 in shutter optimize
         self.set_dataset('optimize.result.count_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI in optimize
         self.set_dataset('count_threshold',[-200]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 from threshold detector
+
         
-        # # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3
-        # self.pins = [13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3 (original br4), 6,8,10,12,22 (bad) ,25,27,29,31
-
-        # electrodes: [bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,...,tr5,t0,b0]
-        self.pins = [13,15,17,19,21,23,7,5,3,1,24,2,26,28,30,9,20,18,16,14,4,11] # Unused dac channels: 0 (bad), 6,8,10,12,22 (bad) ,25,27,29,31
-
-
-        self.ne = int(len(self.pins)) # number of electrodes
         self.np = 8 # number of experiment parameters
+        self.pins = [13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
+        self.ne = int(len(self.pins)) # number of electrodes
     
     def launch_GUI(self):       
         #launch GUI
@@ -134,15 +127,15 @@ class Electron(HasEnvironment):
             for j in ["1","2","3","4","5"]:
                 dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
         for i in ["br"]:
-            for j in ["1","2","3","4", "5"]:
+            for j in ["1","2","3","5"]:
                 dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
         for i in ["tl"]:
             for j in ["1","2","3","4","5"]:
                 dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
         for i in ["tr"]:
-            for j in ["1","2","3","4", "5"]:
+            for j in ["1","2","3","5"]:
                 dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
-        # dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
+        dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
         # self.set_dataset(key="optimize.e.t0",value = -9.00, broadcast=True, persist=True)
         dac_vs.append(self.get_dataset(key="optimize.e.t0"))
         dac_vs.append(self.get_dataset(key="optimize.e.b0"))
@@ -159,6 +152,7 @@ class Electron(HasEnvironment):
 
     @ kernel
     def kernel_run_optimize (self,i,load_dac,update_cycle):
+        # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
         
         self.core.break_realtime()
 
@@ -235,6 +229,8 @@ class Electron(HasEnvironment):
     
     @ kernel
     def set_dac_voltages(self,dac_vs):
+        # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3 
+        # pins=[13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3, 6,8,10,12,22 (bad) ,25,27,29,31
         # self.core.reset()
         self.core.break_realtime() 
         self.zotino0.init()
@@ -462,6 +458,102 @@ class rigol():
         inst.write("OUTPUT2 ON")
         return
 
+# Control the rigol to give out extraction pulse
+'''
+class rigol():
+    def __init__(self):
+        # self.sampling_time = sampling_time # 
+        # # initial phase = 0, voltage -10 ~ 10 V, after T, 0 ~ 10 V
+        # self.offset_ej = 0
+        # self.amplitude_ej = 20
+        # self.phase = 0
+
+        # initial phase != 0, voltage 0 ~ -10 V, need to manually adjust and see on the scope or AWG
+        self.offset_ej = -5
+        self.amplitude_ej = 10
+        self.phase = 270
+
+        self.inst = vxi11.Instrument('TCPIP0::192.168.169.113::INSTR')
+        # self.inst2 = vxi11.Instrument('TCPIP0::192.168.169.117::INSTR')
+        # print(self.inst.ask('*IDN?'))
+
+    def run(self, pulse_width_ej, pulse_delay_ej):
+        self.pulse_width_ej = pulse_width_ej
+        self.pulse_delay_ej = pulse_delay_ej
+        inst = self.inst
+        inst.write("OUTPUT2 OFF")
+        inst.write("OUTPUT1 OFF")	
+        # hardcode sampling rate for ejection pulse, since only need the first few hundred ns
+        period_ej = 1000.E-9
+        waveform_ej = np.zeros(500)
+        waveform_ej[:] = -1
+        waveform_ej[np.int(self.pulse_delay_ej/2E-9):np.int((self.pulse_delay_ej+self.pulse_width_ej)/2E-9)] = 1
+        ej_str = ",".join(map(str,waveform_ej))
+        # Channel 2
+        inst.write(":OUTPut2:LOAD INFinity")
+        inst.write("SOURCE2:PERIOD {:.9f}".format(period_ej))
+        # print(inst.ask("SOURCE2:PERIOD?"))
+        inst.write("SOURCE2:VOLTage:UNIT VPP")
+        inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
+        inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
+        inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
+        inst.write("SOURce2:BURSt ON")
+        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        # inst.write("SOURce2:BURSt:GATE:POL INVerted")
+
+        inst.write("SOURce2:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        inst.write("SOURce2:BURSt:MODE TRIGgered")
+        inst.write("SOURce2:BURSt:NCYCles 1")
+        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
+        inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
+        inst.write("OUTPUT2 ON")
+        return
+
+    def run(self, pulse_width_ej, pulse_delay_ej,offset_ej,amplitude_ej,phase):
+        self.offset_ej = offset_ej
+        self.amplitude_ej = amplitude_ej
+        self.phase = phase
+        self.pulse_width_ej = pulse_width_ej
+        self.pulse_delay_ej = pulse_delay_ej
+        inst = self.inst
+        inst.write("OUTPUT2 OFF")
+        inst.write("OUTPUT1 OFF")   
+        # hardcode sampling rate for ejection pulse, since only need the first few hundred ns
+        period_ej = 1000.E-9
+        waveform_ej = np.zeros(500)
+        waveform_ej[:] = -1
+        waveform_ej[np.int(self.pulse_delay_ej/2E-9):np.int((self.pulse_delay_ej+self.pulse_width_ej)/2E-9)] = 1
+        ej_str = ",".join(map(str,waveform_ej))
+        # Channel 2
+        inst.write(":OUTPut2:LOAD INFinity")
+        inst.write("SOURCE2:PERIOD {:.9f}".format(period_ej))
+        # print(inst.ask("SOURCE2:PERIOD?"))
+        inst.write("SOURCE2:VOLTage:UNIT VPP")
+        inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
+        inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
+        inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
+        inst.write("SOURce2:BURSt ON")
+        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        # inst.write("SOURce2:BURSt:GATE:POL INVerted")
+
+        inst.write("SOURce2:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        inst.write("SOURce2:BURSt:MODE TRIGgered")
+        inst.write("SOURce2:BURSt:NCYCles 1")
+        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
+        inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
+        inst.write("OUTPUT2 ON")
+        return
+'''
 
 # Creating tab widgets
 class MyTabWidget(HasEnvironment,QWidget):
@@ -476,6 +568,15 @@ class MyTabWidget(HasEnvironment,QWidget):
     
     def set_dac_voltages(self,dac_vs):
         self.HasEnvironment.set_dac_voltages(dac_vs)
+
+    # def run_rigol_extraction(self, pulse_width_ej = 800.E-9, pulse_delay_ej = 2.E-9):
+    #     self.rigol113 =  rigol()
+    #     # parameters for the Rigol waveforms
+    #     # pulse_width_ej = 20.E-9
+    #     # pulse_width_ej = 800.E-9 # eject positive V, width = width; eject negative, actual width = 1000ns - set_value
+    #     # pulse_delay_ej = 2.E-9
+    #     self.rigol113.run(pulse_width_ej, pulse_delay_ej,offset_ej=-5,amplitude_ej=10,phase=270)
+
 
     def setup_UI(self):
   
@@ -499,6 +600,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tabs.addTab(self.tab6, "Cryostat")
     
           
+        
+
         '''
         ELECTRODES TAB
         '''
@@ -538,16 +641,33 @@ class MyTabWidget(HasEnvironment,QWidget):
             ycoord = e[3]
             
             for i in range(len(self.ELECTRODES[el_values])):
-                spin = QtWidgets.QDoubleSpinBox(self)
-                spin.setRange(-10,10)
-                spin.setSingleStep(0.1)
-                # spin.setValue(self.default_voltages[index_v]) # set default values
-                # index_v += 1
-                grid1.addWidget(spin,ycoord-i,xcoord_entry,1,1)
-                self.electrodes.append(spin)
-                label = QLabel('       '+self.ELECTRODES[el_values][i], self)
-                label.setAlignment(QtCore.Qt.AlignRight)
-                grid1.addWidget(label,ycoord-i,xcoord_label,1,1)
+                if self.ELECTRODES[el_values][i] == 'tr4:':
+                    label_gap = QLabel('', self)
+                    grid1.addWidget(label_gap,ycoord-i,xcoord_entry,1,1)
+                elif self.ELECTRODES[el_values][i] == 'br4:':
+                    continue
+                else:
+                    spin = QtWidgets.QDoubleSpinBox(self)
+                    spin.setRange(-10,10)
+                    spin.setSingleStep(0.1)
+                    # spin.setValue(self.default_voltages[index_v]) # set default values
+                    # index_v += 1
+                    grid1.addWidget(spin,ycoord-i,xcoord_entry,1,1)
+                    self.electrodes.append(spin)
+                    label = QLabel('       '+self.ELECTRODES[el_values][i], self)
+                    label.setAlignment(QtCore.Qt.AlignRight)
+                    grid1.addWidget(label,ycoord-i,xcoord_label,1,1)
+        
+        # append btr4 to self.electrodes  
+        spin_btr4 = QtWidgets.QDoubleSpinBox(self)
+        spin_btr4.setRange(-10,10)
+        spin_btr4.setSingleStep(0.1)
+        # spin_btr4.setValue(self.default_voltages[-3])
+        grid1.addWidget(spin_btr4,ycoord-3,xcoord_entry,1,1)
+        label = QLabel('       '+'btr4:', self)
+        label.setAlignment(QtCore.Qt.AlignRight)
+        grid1.addWidget(label,ycoord-3,xcoord_label,1,1)
+        self.electrodes.append(spin_btr4)
         
         #spacing
         label_gap = QLabel('', self)
@@ -663,17 +783,32 @@ class MyTabWidget(HasEnvironment,QWidget):
             xcoord_entry = e[2]
             ycoord = e[3]
             
-            for i in range(len(self.ELECTRODES[el_values])):    
-                label = QLabel('       '+ self.ELECTRODES[el_values][i], self)
-                label.setAlignment(QtCore.Qt.AlignRight)
-                grid4.addWidget(label,ycoord-i,xcoord_label, 1,1)
-                # label0 = QLabel('0.00', self)
-                label0 = QLabel(str(self.default_voltages[index_v]), self)
-                index_v += 1
-                self.all_labels.append(label0)
-                label0.setStyleSheet("border: 1px solid black;")
-                grid4.addWidget(label0,ycoord-i,xcoord_entry,1,1)
+            for i in range(len(self.ELECTRODES[el_values])):
+                if self.ELECTRODES[el_values][i] == 'tr4:':
+                    label_gap = QLabel('', self)
+                    grid4.addWidget(label_gap,ycoord-i,xcoord_label,1,1)
+                elif self.ELECTRODES[el_values][i] == 'br4:':
+                    continue
+                else:     
+                    label = QLabel('       '+ self.ELECTRODES[el_values][i], self)
+                    label.setAlignment(QtCore.Qt.AlignRight)
+                    grid4.addWidget(label,ycoord-i,xcoord_label, 1,1)
+                    # label0 = QLabel('0.00', self)
+                    label0 = QLabel(str(self.default_voltages[index_v]), self)
+                    index_v += 1
+                    self.all_labels.append(label0)
+                    label0.setStyleSheet("border: 1px solid black;")
+                    grid4.addWidget(label0,ycoord-i,xcoord_entry,1,1)
           
+        
+        # append btr4 to self.electrodes
+        label = QLabel('       '+ 'btr4:', self)
+        label.setAlignment(QtCore.Qt.AlignRight)
+        grid4.addWidget(label,ycoord-3,xcoord_label, 1,1)
+        self.label0_btr4 = QLabel(str(self.default_voltages[-3]), self)
+        self.label0_btr4.setStyleSheet("border: 1px solid black;")
+        grid4.addWidget(self.label0_btr4,ycoord-3,xcoord_entry,1,1)  
+
         #spacing
         label_gap = QLabel('', self)
         grid4.addWidget(label_gap,5,1,1,1)
@@ -853,14 +988,15 @@ class MyTabWidget(HasEnvironment,QWidget):
             for j in ["1","2","3","4","5"]:
                 default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
         for i in ["br"]:
-            for j in ["1","2","3","4", "5"]:
+            for j in ["1","2","3","5"]:
                 default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
         for i in ["tl"]:
             for j in ["1","2","3","4","5"]:
                 default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
         for i in ["tr"]:
-            for j in ["1","2","3","4","5"]:
+            for j in ["1","2","3","5"]:
                 default.append(self.HasEnvironment.get_dataset(key="optimize.e."+i+j))
+        default.append(self.HasEnvironment.get_dataset(key="optimize.e.btr4"))
         default.append(self.HasEnvironment.get_dataset(key="optimize.e.t0"))
         default.append(self.HasEnvironment.get_dataset(key="optimize.e.b0"))
 
@@ -905,7 +1041,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             self.m=self.m-grid_multipole
             self.e=np.matmul(self.m, self.C_Matrix_np)
         except:
-            f = open('/home/electron/artiq/electron/Cfile_electron_gen2_v-1.txt','r')
+            f = open('/home/electron/artiq/electron/Cfile_electron_gen2_v-1_btr4.txt','r')
             # create list of lines from selected textfile
             self.list_of_lists = []
             for line in f:
@@ -948,29 +1084,54 @@ class MyTabWidget(HasEnvironment,QWidget):
         # print('before changing order', self.e)
 
         #assuming electrode order is [tl1,...,tl5,bl1,...,bl5,tr1,...,tr5,br1,...,br5,t0,b0]
-        #new order: [ bl1,...,bl5,br1,...,br5, b0(grid), t0,tl1,...,tl5,tr1,..,tr5]
+        #new order: [ bl1,...,bl5,br1,...,br5 (except for br4),btr4, b0(grid), t0,tl1,...,tl5,tr1,..,tr5 (except for tr4)]
 
-        self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br4':self.e[8],'br5':self.e[9],'b0':0.0,'t0':self.e[11],'tl1':self.e[12],'tl2':self.e[13],'tl3':self.e[14],'tl4':self.e[15],'tl5':self.e[16],'tr1':self.e[17],'tr2':self.e[18],'tr3':self.e[19],'tr4':self.e[20],'tr5':self.e[21]}
+        self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br5':self.e[8],'btr4':self.e[9],'b0':0.0,'t0':self.e[11],'tl1':self.e[12],'tl2':self.e[13],'tl3':self.e[14],'tl4':self.e[15],'tl5':self.e[16],'tr1':self.e[17],'tr2':self.e[18],'tr3':self.e[19],'tr5':self.e[20]}
         print(self.elec_dict)
-
-
-
+ 
         for i in range(5):
             self.all_labels[i].setText(str(round(self.elec_dict['bl'+f'{1+i}'],3)))
+            self.all_labels[9+i].setText(str(round(self.elec_dict['tl'+f'{1+i}'],3)))
+            
+        for i in [0,1,2]:
             self.all_labels[5+i].setText(str(round(self.elec_dict['br'+f'{1+i}'],3)))
-            self.all_labels[10+i].setText(str(round(self.elec_dict['tl'+f'{1+i}'],3)))
-            self.all_labels[15+i].setText(str(round(self.elec_dict['tr'+f'{1+i}'],3)))
+            self.all_labels[14+i].setText(str(round(self.elec_dict['tr'+f'{1+i}'],3)))
+
+        self.all_labels[5+3].setText(str(round(self.elec_dict['br'+f'{1+4}'],3)))
+        self.all_labels[14+3].setText(str(round(self.elec_dict['tr'+f'{1+4}'],3)))
+        self.label0_btr4.setText(str(round(self.elec_dict['btr4'],3)))
         self.label0_t0.setText(str(round(self.elec_dict['t0'],3)))
         self.label0_b0.setText(str(round(self.elec_dict['b0'],3)))
 
         self.e=[]
-        for string in ['bl','br','tl','tr']:
-            for i in range(5):
-                self.e.append(self.elec_dict[string+f'{1+i}'])
+        string = 'bl'
+        for i in range(5):
+            self.e.append(self.elec_dict[string+f'{1+i}'])
+        string = 'br'
+        for i in range(3):
+            self.e.append(self.elec_dict[string+f'{1+i}'])
+        self.e.append(self.elec_dict[string+f'{5}'])
+        string = 'tl'
+        for i in range(5):
+            self.e.append(self.elec_dict[string+f'{1+i}'])
+        string = 'tr'
+        for i in range(3):
+            self.e.append(self.elec_dict[string+f'{1+i}'])
+        self.e.append(self.elec_dict[string+f'{5}'])
+        # for string in ['bl','br','tl','tr']:
+        #     for i in range(5):
+        #         if string+str(i+1) == 'br4' or 'tr4':
+        #             continue
+                
+        #         else:
+        #             self.e.append(self.elec_dict[string+f'{1+i}'])     
+        self.e.append(self.elec_dict['btr4'])
         self.e.append(self.elec_dict['t0'])
         self.e.append(self.elec_dict['b0'])
         print(self.e)
         self.mutate_dataset_electrode()
+        # for c in range(len(self.e)):
+            # self.mutate_dataset("dac_voltages", c, self.e[c])
         self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True, persist=True)
         print("update_multipoles has mutated dataset")
 
@@ -979,14 +1140,15 @@ class MyTabWidget(HasEnvironment,QWidget):
             for i in range(5):
                 self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
         for string in ['br']:
-            for i in range(5):
+            for i in [0,1,2,4]:
                 self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
         for string in ['tl']:
             for i in range(5):
                 self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
         for string in ['tr']:
-            for i in range(5):
+            for i in [0,1,2,4]:
                 self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.e.btr4",self.elec_dict['btr4'], broadcast=True, persist=True)
         self.HasEnvironment.set_dataset("optimize.e.t0",self.elec_dict['t0'], broadcast=True, persist=True)
         self.HasEnvironment.set_dataset("optimize.e.b0",self.elec_dict['b0'], broadcast=True, persist=True)
 
@@ -1068,7 +1230,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         dataset_name = "optimize.result." + form.string_selected
 
         # DATASETS
-        e_headers = ["b0","bl1","bl2","bl3","bl4","bl5","br1","br2","br3","br4","br5","t0","tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr4","tr5"]
+        e_headers = ["b0","bl1","bl2","bl3","bl4","bl5","br1","br2","br3","br5","btr4","t0","tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr5"]
         m_headers = ["Grid","Ex","Ey","Ez","U1","U2","U3","U4","U5","U6"]
         p_headers = ["number_of_datapoints", "number_of_repetitions","pulse_counting_time","t_acquisition","t_delay","t_load","t_wait","trigger_level"]
         results = ["count_ROI","count_tot"]
@@ -1346,7 +1508,7 @@ class Worker(QObject):
         self.finished.emit()
 
 
-class Electron_GUI(Electron, EnvExperiment):#, object):
+class btr4_GUI(Electron, EnvExperiment):#, object):
     def build(self):
         Electron.build(self)
 
