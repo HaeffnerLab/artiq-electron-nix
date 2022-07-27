@@ -14,77 +14,80 @@ import time
 import os
 import sys
 import csv
+from matplotlib import pyplot as plt
 
 
 class Electron(HasEnvironment):
     def build(self):
         self.setattr_device('core')
         self.setattr_device('zotino0') # artiq DAC
+        self.setattr_device('ttl1')
         self.setattr_device('ttl2') # where MCP pulses are being sent in by ttl, connect to Q of threshold detector
         self.setattr_device('ttl8') # use this channel to trigger AOM, connect to switch near VCO and AOM
         self.setattr_device('ttl9') # use this channel to trigger R&S for tickle pulse, connect to R&S
         self.setattr_device('ttl10') # use this channel to trigger extraction pulse, connect to RIGOL external trigger
-        self.setattr_device('ttl11') # use this channel to reset threshold detector, connect to reset of threshold detector
-        self.setattr_device("ttl12")  # sending ttl to shutter motor servo 390
-        self.setattr_device("ttl13")  # sending ttl to shutter motor servo 422
+        
+        self.setattr_device("ttl12")
+        self.setattr_device("ttl13")
         self.setattr_device('scheduler') # scheduler used
         self.setattr_device("sampler0")
 
         self.setattr_argument('number_of_datapoints', NumberValue(default=5000,unit=' ',scale=1,ndecimals=0,step=1)) #how many data points on the plot, run experiment & pulse counting
-        # self.setattr_argument('time_count', NumberValue(default=5000,unit='number of counts',scale=1,ndecimals=0,step=1)) #how many indices you have in time axis, pulse counting
+        self.setattr_argument('number_of_bins', NumberValue(default=10,unit=' ',scale=1,ndecimals=0,step=1)) #how many indices you have in time axis, pulse counting
 
     def prepare(self):
         # for i in ['Grid', 'Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']:
-            # self.set_dataset(key="optimize.multipoles."+i, value=np.float32(0), broadcast=True, persist=True)
+            # self.set_dataset(key="optimize.multipoles."+i, value=np.float32(0), broadcast=True, persist=False)
         # for i in ["bl"]:
         #     for j in ["1","2","3","4","5"]:
-        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=False)
         # for i in ["br"]:
         #     for j in ["1","2","3","5"]:
-        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=False)
         # for i in ["tl"]:
         #     for j in ["1","2","3","4","5"]:
-        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=False)
         # for i in ["tr"]:
         #     for j in ["1","2","3","5"]:
-        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=True)
+        #         self.set_dataset(key="optimize.e."+i+j, value=np.float32(0), broadcast=True, persist=False)
         # self.set_dataset(key="optimize.e.btr4", value=np.float32(0), broadcast=True, persist=False)
-        # self.set_dataset(key="optimize.e.t0", value=np.float32(0), broadcast=True, persist=True)
-        # self.set_dataset(key="optimize.e.b0", value=np.float32(0), broadcast=True, persist=True)
+        # self.set_dataset(key="optimize.e.t0", value=np.float32(0), broadcast=True, persist=False)
+        # self.set_dataset(key="optimize.e.b0", value=np.float32(0), broadcast=True, persist=False)
         
         # # flags: indicating changes from GUI, 1 = there is change that needs to be implemented
-        # self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True) # electrode voltages
-        # self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True) # experiment parameters
-        # self.set_dataset(key="optimize.flag.stop", value = 0, broadcast=True, persist=True) # whether or not terminate the experiment
+        # self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=False) # electrode voltages
+        # self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=False) # experiment parameters
+        # self.set_dataset(key="optimize.flag.stop", value = 0, broadcast=True, persist=False) # whether or not terminate the experiment
 
-        # # parameters: t_load(us),t_wait(us),t_delay(ns), t_acquisition(ns),pulse_counting_time(ms), trigger_level (V), # repetitions, # datapoints
-        # self.set_dataset(key="optimize.parameter.t_load", value = np.int(100), broadcast=True, persist=True) # t_load(us)
-        # self.set_dataset(key="optimize.parameter.t_wait", value = np.int(100), broadcast=True, persist=True) # t_wait(us)
-        # self.set_dataset(key="optimize.parameter.t_delay", value = np.int(600), broadcast=True, persist=True) # t_delay(ns)
-        # self.set_dataset(key="optimize.parameter.t_acquisition", value = np.int(100), broadcast=True, persist=True) # t_acquisition(ns)
-        # self.set_dataset(key="optimize.parameter.pulse_counting_time", value = np.int(500), broadcast=True, persist=True) # pulse_counting_time(ms)
-        # self.set_dataset(key="optimize.parameter.trigger_level", value = 0.3, broadcast=True, persist=True) # trigger level (V)
-        # self.set_dataset(key="optimize.parameter.number_of_repetitions", value = np.int(1000), broadcast=True, persist=True) # number of repetitions
-        # self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(5000), broadcast=True, persist=True) # number of datapoints
+        # # parameters: t_load(us),t_wait(ns),t_delay(ns), t_acquisition(ns),pulse_counting_time(ms), trigger_level (V), # repetitions, # datapoints
+        # self.set_dataset(key="optimize.parameter.t_load", value = np.int(100), broadcast=True, persist=False) # t_load(us)
+        # self.set_dataset(key="optimize.parameter.t_wait", value = np.int(100), broadcast=True, persist=False) # t_wait(ns)
+        # self.set_dataset(key="optimize.parameter.t_delay", value = np.int(600), broadcast=True, persist=False) # t_delay(ns)
+        # self.set_dataset(key="optimize.parameter.t_acquisition", value = np.int(100), broadcast=True, persist=False) # t_acquisition(ns)
+        # self.set_dataset(key="optimize.parameter.pulse_counting_time", value = np.int(500), broadcast=True, persist=False) # pulse_counting_time(ms)
+        # self.set_dataset(key="optimize.parameter.trigger_level", value = 0.3, broadcast=True, persist=False) # trigger level (V)
+        # self.set_dataset(key="optimize.parameter.number_of_repetitions", value = np.int(1000), broadcast=True, persist=False) # number of repetitions
+        # self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(5000), broadcast=True, persist=False) # number of datapoints
 
 
-        # self.set_dataset(key="optimize.e.br4", value=np.float32(0), broadcast=True, persist=True)
-        # self.set_dataset(key="optimize.e.tr4", value=np.float32(0), broadcast=True, persist=True)
+        # self.set_dataset(key="optimize.e.br4", value=np.float32(0), broadcast=True, persist=False)
+        # self.set_dataset(key="optimize.e.tr4", value=np.float32(0), broadcast=True, persist=False)
 
 
         # results:
         self.set_dataset('optimize.result.count_tot',[-100]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 in pusle counting
         self.set_dataset('optimize.result.count_PI',[-10]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 in shutter optimize
         self.set_dataset('optimize.result.count_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI in optimize
-        self.set_dataset('count_threshold',[-200]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 from threshold detector
-        
+        self.set_dataset('optimize.result.countrate_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI in optimize without accumulating
+        self.set_dataset('optimize.result.bin_times', [-1]*0,broadcast=True) #self.number_of_bins*self.number_of_datapoints,broadcast=True) # Small bins for histogram
+
+
         # # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3
         # self.pins = [13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3 (original br4), 6,8,10,12,22 (bad) ,25,27,29,31
 
         # electrodes: [bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,...,tr5,t0,b0]
-        self.pins = [13,15,17,19,21,23,7,5,3,1,24,2,26,28,30,9,20,18,16,14,4,11] # Unused dac channels: 0 (bad), 6,8,10,12,22 (bad) ,25,27,29,31
-
-
+        # self.pins = [13,15,17,19,21,23,7,5,3,1,24,2,26,28,30,9,20,18,16,14,4,11] # old pin matching board, Unused dac channels: 0 (bad), 6,8,10,12,22 (bad) ,25,27,29,31
+        self.pins = [21,22,11,24,25,6,17,13,15,14,8,10,16,12,23,18,4,3,2,1,9,20] # commercialized pin matching board, used dac channels: 1-25
         self.ne = int(len(self.pins)) # number of electrodes
         self.np = 8 # number of experiment parameters
     
@@ -109,6 +112,12 @@ class Electron(HasEnvironment):
         win.setWindowTitle(self.title)
         win.setGeometry(self.left, self.top, self.width, self.height)
         self.tab_widget = MyTabWidget(self,win)
+
+        
+        # print("testing function without GUI (for debugging)")
+        # self.tab_widget.on_run_click_main()
+        
+
         win.setCentralWidget(self.tab_widget)
 
     @ kernel
@@ -143,7 +152,7 @@ class Electron(HasEnvironment):
             for j in ["1","2","3","4", "5"]:
                 dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
         # dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
-        # self.set_dataset(key="optimize.e.t0",value = -9.00, broadcast=True, persist=True)
+        # self.set_dataset(key="optimize.e.t0",value = -9.00, broadcast=True, persist=False)
         dac_vs.append(self.get_dataset(key="optimize.e.t0"))
         dac_vs.append(self.get_dataset(key="optimize.e.b0"))
         
@@ -159,16 +168,16 @@ class Electron(HasEnvironment):
 
     @ kernel
     def kernel_run_optimize (self,i,load_dac,update_cycle):
-        
+        #print("kernel run optimize is runnning")
         self.core.break_realtime()
-
         t_load = np.int32(self.parameter_list[0])
         t_wait = np.int32(self.parameter_list[1])
         t_delay = np.int32(self.parameter_list[2])
         t_acquisition = np.int32(self.parameter_list[3])
+        trigger_level = self.parameter_list[5]
         number_of_repetitions = np.int32(self.parameter_list[6])
         number_of_datapoints = np.int32(self.parameter_list[7])
-
+        
         if load_dac:
             self.zotino0.init()
             self.core.break_realtime() 
@@ -176,9 +185,12 @@ class Electron(HasEnvironment):
                 delay(500*us)
                 self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])    
             self.zotino0.load()
-            # print("Loaded dac voltages")
+            print("Loaded dac voltages")
 
+        pulseindex = 0
         for k in range(update_cycle):
+            countrate_tot = 0 
+            
             for j in range(number_of_repetitions):
                 self.core.break_realtime()
                 with sequential:
@@ -187,20 +199,170 @@ class Electron(HasEnvironment):
                     with parallel:
                         self.ttl8.off()
                         self.ttl9.on()
-                    delay(t_wait*us)
+                    delay(t_wait*ns)
                     with parallel:
                         self.ttl9.off()
                         self.ttl10.pulse(2*us)
-                        with sequential:
-                            # t_extract = self.t_load + self.t_wait + t_delay
-                            delay(t_delay*ns)
-                            t_count = self.ttl2.gate_rising(t_acquisition*ns)
+                        with parallel:
+                            with sequential:
+                                delay(440*ns)
+                                self.ttl12.pulse(1*us)
+                            with sequential:
+                                # t_extract = self.t_load + self.t_wait + t_delay
+                                delay(t_delay*ns)
+                                with parallel:
+                                    with sequential:
+                                        delay(20*ns)
+                                        self.ttl13.pulse(t_acquisition*ns)
+
+                                    t_count = self.ttl2.gate_rising(t_acquisition*ns)
+
+
+                                    
+
                     count = self.ttl2.count(t_count)
                     if count > 0:
                         count = 1
                     self.count_tot += count
+                    countrate_tot += count
                     delay(1*us)
             self.mutate_dataset('optimize.result.count_ROI',i*update_cycle+k,self.count_tot)
+            self.mutate_dataset('optimize.result.countrate_ROI',i*update_cycle+k,countrate_tot)
+
+    @ kernel
+    def kernel_run_optimize_hist(self,i,load_dac,update_cycle):
+
+        # print("kernel run optimize hist is running")
+        self.core.break_realtime()
+        t_load = np.int32(self.parameter_list[0])
+        t_wait = np.int32(self.parameter_list[1])
+        t_delay = np.int32(self.parameter_list[2])
+        t_acquisition = np.int32(self.parameter_list[3])
+        number_of_repetitions = np.int32(self.parameter_list[6])
+        number_of_datapoints = np.int32(self.parameter_list[7])
+        
+        t_bins = 10 # bin width (ns) for histogram
+        t_total = t_load*1000+t_wait+t_delay+t_acquisition # cycle duration (ns)
+        n_bins = 32000 # int(t_total/t_bins)+1 #bins
+
+        if load_dac:
+            self.zotino0.init()
+            self.core.break_realtime() 
+            for pin in range(self.ne):
+                delay(500*us)
+                self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])    
+            self.zotino0.load()
+            print("Loaded dac voltages")
+
+        # self.core.break_realtime()
+        for k in range(update_cycle):
+            self.core.break_realtime()
+            with parallel:
+            # t_start = now_mu()
+                # t_end = self.ttl2.gate_rising(number_of_repetitions*t_total*ns) #opens gate for rising edges to be detected on TTL2 for 250 us
+      
+                # print(t_total*ns)
+                # print(number_of_repetitions*t_total*ns)
+
+
+                with sequential:
+                    t_start = now_mu()
+                    t_end = self.ttl2.gate_rising(number_of_repetitions*t_total*ns)   
+                    # delay(100*ns) 
+
+                with sequential:
+
+                    for j in range(number_of_repetitions):
+
+                        # self.core.break_realtime()
+                        
+                        # with parallel:
+                            
+                        #experiment cycle
+
+                        with parallel:
+                            with sequential:
+                                self.ttl8.on()
+                                delay(t_load*us)
+                                self.ttl8.off()
+                            with sequential:
+                                delay(t_load*us+t_wait*ns)
+                                self.ttl10.pulse(200*ns)
+                                delay(100*ns)
+                            # delay(100*ns)
+                        delay(100*ns)
+      
+
+
+
+            # with sequential:
+
+                    # Set start time and open input channel
+            
+                    # t_end = self.ttl2.gate_rising(t_total*ns) #opens gate for rising edges to be detected on TTL2 for 250 us
+                    
+            # Timestamp events
+            tstamp = self.ttl2.timestamp_mu(t_end)
+            # print(tstamp)
+            # Add timestamp to dataset
+            while tstamp != -1:
+                timestamp = self.core.mu_to_seconds(tstamp)-self.core.mu_to_seconds(t_start)
+                timestamp_us = timestamp*1e6
+                # print(timestamp_us)
+                self.append_to_dataset('optimize.result.bin_times',timestamp_us)
+                tstamp = self.ttl2.timestamp_mu(t_end)
+                delay(100*ns) 
+
+            delay(100*ns)
+            self.make_hist()
+
+     
+
+
+                     
+
+    def reset_time_tag(self):
+        self.hist = np.zeros(5)
+        return
+    def time_tag(self,bin_,count):
+        self.hist = count
+        return
+    def update_hist(self):
+        print('updating histogram')
+        
+        return 
+
+    def make_hist(self):
+
+        hist_data = self.get_dataset("optimize.result.bin_times")
+        hist_data = np.array(hist_data)
+        #np.save('/home/electron/Desktop/hist_data.npy', hist_data)
+        #print("timestamp list:", hist_data)
+
+        #range_timestamps = round(max(hist_data)) #us
+        #self.set_dataset('optimize.result.bin_boundaries', np.arange(0,range_timestamps,1), broadcast=True)
+
+
+        '''
+        hist_final = [0]*(round(max(hist_data))+1)
+        self.set_dataset('optimize.result.final_hist', hist_final, broadcast=True)
+
+
+        # for n in hist_data:
+        #     i = round(n)
+        #     hist_final[i] += 1
+        '''
+        # a,b,c=plt.hist(hist_data,50)
+        # a,b=np.histogram(hist_data[(hist_data > 1 ) & (hist_data<1000)],bins=50)      
+        a,b=np.histogram(hist_data,bins=50)           
+
+        self.set_dataset('optimize.result.hist_ys', a, broadcast=True)
+        self.set_dataset('optimize.result.hist_xs', b, broadcast=True)
+
+        # print(b)
+
+        return 
+
 
     def rolling_optimize(self):
         self.get_dac_vs()
@@ -208,8 +370,10 @@ class Electron(HasEnvironment):
         self.get_parameter_list()
         # print("parameter_list",self.parameter_list)
         self.count_tot = 0
+        self.count_bins = 0
         number_of_datapoints = np.int(self.parameter_list[7])
         update_cycle = 10 # artiq will check for user update every 10 experiment cycles
+
 
         for i in range(int(number_of_datapoints/update_cycle)):
             load_dac = False
@@ -219,29 +383,42 @@ class Electron(HasEnvironment):
             if flag_stop == 1:
                 for j in range(i*update_cycle):
                     self.mutate_dataset('optimize.result.count_ROI',j,-2)
+                    self.mutate_dataset('optimize.result.countrate_ROI',j,-2)
                 print("Experiment terminated")
                 return
+            
             if flag_dac == 1:
                 # load dac voltages
                 self.get_dac_vs()
                 load_dac = True
-                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True)
+                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=False)
             if flag_parameter == 1:
                 # t_load, t_wait, t_delay, t_acquisition, number_of_repetitions, number_of_datapoints = self.get_parameter_list()
                 self.get_parameter_list()
-                self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True)
-            self.kernel_run_optimize(i,load_dac,update_cycle)
+                self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=False)
+
+            hist = True
+            if hist:
+                self.kernel_run_optimize_hist(i,load_dac,update_cycle)
+            else:
+                self.kernel_run_optimize(i,load_dac,update_cycle)
+
 
     
     @ kernel
     def set_dac_voltages(self,dac_vs):
         # self.core.reset()
+        
         self.core.break_realtime() 
         self.zotino0.init()
         # self.core.break_realtime() 
         for pin in range(self.ne):
             delay(500*us)
+
+            #if dac_vs[pin] < 10:
             self.zotino0.write_dac(self.pins[pin],dac_vs[pin])    
+            #else:
+                #print(f"WARNING: pin {self.pins[pin]} was not updated (votage {dac_vs[pin]} exceeds voltage limit")
         self.zotino0.load()
 
     @kernel
@@ -313,7 +490,7 @@ class Electron(HasEnvironment):
                 # load dac voltages
                 dac_vs = self.get_dac_vs()
                 load_dac = True
-                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True)
+                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=False)
             print("Start counting...")
             self.kernel_run_shutter_optimize(j,load_dac, N, detection_time)
 
@@ -326,7 +503,12 @@ class Electron(HasEnvironment):
             self.core.break_realtime() 
             for pin in range(self.ne):
                 delay(500*us)
+
+
+                #if self.dac_vs[pin] < 10:
                 self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])    
+                #else:
+                    #print("WARNING: pin", self.pins[pin], "was not updated (votage", self.dac_vs[pin],  "exceeds voltage limit)")    
             self.zotino0.load()
             print("Loaded dac voltages")
 
@@ -339,15 +521,75 @@ class Electron(HasEnvironment):
 
         # self.mutate_dataset('optimize.result.count_tot',j,self.ttl2.count(t_count)/(detection_time*ms))
 
-        count = 0
-        for i in range(5000):
-            self.core.break_realtime()
-            with parallel:
-                self.ttl10.pulse(2*us) # extraction pulse
-                t_count = self.ttl2.gate_rising(100*us)
-            count += self.ttl2.count(t_count)
+        # N = 5000
+        # self.core.break_realtime()
+        # t_count = self.ttl2.gate_rising(detection_time*ms)
+        # for i in range(N):
+        #     # self.core.break_realtime()
+        #     with parallel:
+        #         with parallel:
+        #             self.ttl10.pulse(2*us) # extraction pulse
+        #             with sequential:
+        #                 delay(440*ns)
+        #                 self.ttl12.pulse(1*us)
+                
+        # count = self.ttl2.count(t_count)
+
+        self.core.break_realtime()
+        
+        with parallel:
+            t_count = self.ttl2.gate_rising(detection_time*ms)
+            self.ttl10.pulse(2*us) # extraction pulse
+            with sequential:
+                delay(440*ns)
+                self.ttl10.pulse(1*us)
+                
+        count = self.ttl2.count(t_count)
+
 
         self.mutate_dataset('optimize.result.count_tot',j,count/(detection_time*ms))
+        # self.mutate_dataset('optimize.result.count_tot',j,count)
+# 
+#     @kernel
+#     def kernel_run_pulse_counting_hist(self,j,load_dac,detection_time):
+#         self.core.break_realtime()
+#         if load_dac:
+#             self.zotino0.init()
+#             self.core.break_realtime() 
+#             for pin in range(self.ne):
+#                 delay(500*us)
+#                 self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])    
+#             self.zotino0.load()
+#             print("Loaded dac voltages")
+
+#         # self.core.break_realtime()
+#         if j == 0:
+#             self.ttl8.on() # AOM
+#         # with parallel:
+#         #     self.ttl10.pulse(2*us) # extraction pulse
+#         #     t_count = self.ttl2.gate_rising(detection_time*ms)
+
+#         # self.mutate_dataset('optimize.result.count_tot',j,self.ttl2.count(t_count)/(detection_time*ms))
+
+#         count = 0
+#         N = 5000
+#         for i in range(N):
+#             self.core.break_realtime()
+#             with parallel:
+#                 with parallel:
+#                     self.ttl10.pulse(2*us) # extraction pulse
+#                     with sequential:
+#                         delay(440*ns)
+#                         self.ttl12.pulse(1*us)
+            
+#                     t_count = self.ttl2.gate_rising(detection_time*1000/N*us)
+#                     #tstamp = self.ttl2.timestamp_mu(detection_time*1000/N*us)
+#                 #print(tstamp)
+#             count += self.ttl2.count(t_count)
+
+# # 
+#         # self.mutate_dataset('optimize.result.count_tot',j,count/(detection_time*ms))
+#         self.mutate_dataset('optimize.result.count_tot',j,count)
 
 
     def pulse_counting(self):
@@ -366,7 +608,7 @@ class Electron(HasEnvironment):
                 # load dac voltages
                 dac_vs = self.get_dac_vs()
                 load_dac = True
-                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=True)
+                self.set_dataset(key="optimize.flag.e", value = 0, broadcast=True, persist=False)
             self.kernel_run_pulse_counting(j,load_dac, detection_time)
             
          
@@ -414,10 +656,10 @@ import vxi11
 import matplotlib.pyplot as plt
 
 class rigol():
-    def __init__(self,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=10,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
+    def __init__(self,ip=113,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=20,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
         # self.sampling_time = sampling_time # 
         
-        # initial phase != 0, voltage 0 ~ -10 V, need to manually adjust and see on the scope or AWG
+        # initial phase != 0, voltage 0 ~ -20 V, need to manually adjust and see on the scope or AWG
         self.pulse_width_ej = pulse_width_ej
         self.pulse_delay_ej = pulse_delay_ej
         self.offset_ej = offset_ej
@@ -425,7 +667,8 @@ class rigol():
         self.phase = phase
         self.period_ej = period_ej
         self.sampling_time = sampling_time
-        self.inst = vxi11.Instrument('TCPIP0::192.168.169.113::INSTR')
+        # self.inst = vxi11.Instrument('TCPIP0::192.168.169.113::INSTR')
+        self.inst = vxi11.Instrument('TCPIP0::192.168.169.'+str(ip)+'::INSTR')
        
 
     def run(self):
@@ -437,6 +680,29 @@ class rigol():
         waveform_ej[:] = -1
         waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = 1
         ej_str = ",".join(map(str,waveform_ej))
+        
+        # inst.write(":OUTPut1:LOAD INFinity")
+        # inst.write("SOURCE1:PERIOD {:.9f}".format(self.period_ej))
+        # # print(inst.ask("SOURCE2:PERIOD?"))
+        # inst.write("SOURCE1:VOLTage:UNIT VPP")
+        # inst.write("SOURCE1:VOLTage {:.3f}".format(self.amplitude_ej))
+        # inst.write("SOURCE1:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
+        # inst.write("SOURCE1:TRACE:DATA VOLATILE,"+ ej_str)
+        # # inst.write("SOURCE2:PHASe 20")
+        
+        # inst.write("SOURce1:BURSt ON")
+        # # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        # inst.write("SOURce1:BURSt:GATE:POL INVerted")
+
+        # inst.write("SOURce1:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        # inst.write("SOURce1:BURSt:MODE TRIGgered")
+        # inst.write("SOURce1:BURSt:NCYCles 1")
+        # # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        # inst.write("SOURCe1:BURSt:TRIGger:SOURce EXTernal")
+        # inst.write("SOURce1:BURSt:TRIGger:SLOPe POSitive")
+
         # Channel 2
         inst.write(":OUTPut2:LOAD INFinity")
         inst.write("SOURCE2:PERIOD {:.9f}".format(self.period_ej))
@@ -459,6 +725,38 @@ class rigol():
         # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
         inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
         inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
+
+
+        # ###### use channel one to extrac on the bottom two central electrodes
+        waveform_ej = np.zeros(int(self.period_ej/self.sampling_time))
+        waveform_ej[:] = 1
+        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = -1
+        ej_str = ",".join(map(str,waveform_ej))
+        # Channel 1
+        inst.write(":OUTPut1:LOAD INFinity")
+        inst.write("SOURCE1:PERIOD {:.9f}".format(self.period_ej))
+        # print(inst.ask("SOURCE2:PERIOD?"))
+        inst.write("SOURCE1:VOLTage:UNIT VPP")
+        inst.write("SOURCE1:VOLTage {:.3f}".format(self.amplitude_ej))
+        inst.write("SOURCE1:VOLTage:OFFSet {:.3f}".format(-1*self.offset_ej))
+        inst.write("SOURCE1:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
+        inst.write("SOURce1:BURSt ON")
+        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        inst.write("SOURce1:BURSt:GATE:POL NORMal")
+
+        # inst.write("SOURce1:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        inst.write("SOURce1:BURSt:MODE TRIGgered")
+        inst.write("SOURce1:BURSt:NCYCles 1")
+        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        inst.write("SOURCe1:BURSt:TRIGger:SOURce EXTernal")
+        inst.write("SOURce1:BURSt:TRIGger:SLOPe POSitive")
+
+
+        inst.write("OUTPUT1 ON")
         inst.write("OUTPUT2 ON")
         return
 
@@ -601,12 +899,12 @@ class MyTabWidget(HasEnvironment,QWidget):
         #create parameter text entry boxes
         # self.default = [100,100,600,100,500,0.3,1000,1000] # default values
         self.default_parameter = self.get_default_parameter() # read data from dataset
-        PARAMETERS1 = ['Load time (us):', 'Wait time (us):', 'Delay time (ns):','Acquisition time(ns):' ]
+        PARAMETERS1 = ['Load time (us):', 'Wait time (ns):', 'Delay time (ns):','Acquisition time(ns):' ]
         DEFAULTS1 = self.default_parameter[0:4] # default values
 
         for i in range(len(PARAMETERS1)):  
             spin = QtWidgets.QSpinBox(self)
-            spin.setRange(0,10000000)
+            spin.setRange(-10000000,10000000)
             spin.setSingleStep(10)
             spin.setValue(DEFAULTS1[i]) # set default values
             grid4.addWidget(spin,i+13,1,1,1)
@@ -711,7 +1009,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         for i in range(len(MULTIPOLES)):  
             spin = QtWidgets.QDoubleSpinBox(self)
             if MULTIPOLES[i] == 'Grid: (V)':
-                spin.setRange(0,300)
+                spin.setRange(0,3000)
             else:
                 spin.setRange(-10,10)
             spin.setSingleStep(0.01)
@@ -784,6 +1082,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         t_button.clicked.connect(self.HasEnvironment.kernel_run_shutter_optimize)
         grid4.addWidget(t_button, 14-1, 7)
 
+        hist_button = QPushButton('Make histogram', self)
+        hist_button.clicked.connect(self.HasEnvironment.make_hist)
+        grid4.addWidget(hist_button, 14-2, 7)
+
 
         grid4.setRowStretch(4, 1)
         self.tab4.setLayout(grid4)
@@ -795,8 +1097,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         self.device_parameter_list = []  
         # rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):']
-        rigol_PARAMETERS = ['Offset width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Ejection pulse width (ns):','Sampling time (ns):'] # make it to be less confusing
-        rigol_DEFAULTS = [10, 0, -5, 10, 0,100,2]
+        rigol_PARAMETERS = ['Offset width (ns):', 'Pulse delay (ns):','Offset (V)(= -Amplitude/2):',  'Amplitude (V):', 'Phase:','Ejection pulse width (ns):','Sampling time (ns):'] # make it to be less confusing
+        rigol_DEFAULTS = [10, 0, -5, 20, 0,200,2]
 
         for i in range(len(rigol_PARAMETERS)):  
             spin = QtWidgets.QSpinBox(self)
@@ -838,8 +1140,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         phase = self.dev_list[4]
         period_ej = self.dev_list[5]*1e-9
         sampling_time = self.dev_list[6]*1e-9
-        self.rigol113 =  rigol(pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
+        self.rigol113 =  rigol(113,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
+        # self.rigol117 =  rigol(117,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
         self.rigol113.run()
+        # self.rigol117.run()
 
 
     def set_threshold_voltages(self):
@@ -893,9 +1197,12 @@ class MyTabWidget(HasEnvironment,QWidget):
             text = m.text() or "0"
             self.mul_list.append(float(text))
 
+    
         for i, value in enumerate(['Grid','Ex', 'Ey', 'Ez', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6']):
-            self.HasEnvironment.set_dataset("optimize.multipoles."+value,self.mul_list[i], broadcast=True, persist=True)
+            self.HasEnvironment.set_dataset("optimize.multipoles."+value, self.mul_list[i], broadcast=True, persist=False)
         grid_V = self.mul_list[0]
+
+        
 
         # Calculate and print electrode values
         try:
@@ -935,10 +1242,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         for i in range(len(self.e[0])):
             if self.e[0][i]>=10:
                 print(f'warning: voltage {round(self.e[0][i],3)}  exceeds limit')
-                self.e[0][i]=10
+                self.e[0][i]=9.9
             elif self.e[0][i]<=-10:
                 print(f'warning: voltage {round(self.e[0][i],3)} exceeds limit')
-                self.e[0][i]=-10
+                self.e[0][i]=-9.9
 
         self.e = self.e[0].tolist()
         #self.e.append(self.e.pop(10))      
@@ -971,29 +1278,29 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.e.append(self.elec_dict['b0'])
         print(self.e)
         self.mutate_dataset_electrode()
-        self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True, persist=False)
         print("update_multipoles has mutated dataset")
 
     def mutate_dataset_electrode(self):
         for string in ['bl']:
             for i in range(5):
-                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=False)
         for string in ['br']:
             for i in range(5):
-                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=False)
         for string in ['tl']:
             for i in range(5):
-                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=False)
         for string in ['tr']:
             for i in range(5):
-                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
-        self.HasEnvironment.set_dataset("optimize.e.t0",self.elec_dict['t0'], broadcast=True, persist=True)
-        self.HasEnvironment.set_dataset("optimize.e.b0",self.elec_dict['b0'], broadcast=True, persist=True)
+                self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=False)
+        self.HasEnvironment.set_dataset("optimize.e.t0",self.elec_dict['t0'], broadcast=True, persist=False)
+        self.HasEnvironment.set_dataset("optimize.e.b0",self.elec_dict['b0'], broadcast=True, persist=False)
 
     def mutate_dataset_parameters(self):
         p = ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints"]
         for i in range(len(p)):
-            self.HasEnvironment.set_dataset(key="optimize.parameter."+p[i],value = self.parameter_dict[p[i]], broadcast=True, persist=True)
+            self.HasEnvironment.set_dataset(key="optimize.parameter."+p[i],value = self.parameter_dict[p[i]], broadcast=True, persist=False)
 
 
     def update_parameters(self):
@@ -1005,12 +1312,12 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.parameter_dict={"t_load":self.p[0],"t_wait":self.p[1],"t_delay":self.p[2],"t_acquisition":self.p[3],"pulse_counting_time":self.p[4],"trigger_level":self.p[5],"number_of_repetitions":self.p[6],"number_of_datapoints":self.p[7]}
         print(self.p)
         self.mutate_dataset_parameters()
-        self.HasEnvironment.set_dataset("optimize.flag.p",1, broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.flag.p",1, broadcast=True, persist=False)
         print("update_parameters has mutated dataset")
 
 
     def long_run_task(self):
-        self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=False)
         self.update_multipoles()
         self.update_parameters()
         # self.run_rigol_extraction()
@@ -1053,7 +1360,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
     def on_terminate_click(self):
-        self.HasEnvironment.set_dataset("optimize.flag.stop",1, broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.flag.stop",1, broadcast=True, persist=False)
         return
 
     def on_store_data_click(self):
@@ -1153,7 +1460,7 @@ class MyTabWidget(HasEnvironment,QWidget):
 
     def on_pulse_counting_click(self):
 
-        self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=False)
         self.HasEnvironment.get_parameter_list()
         self.HasEnvironment.core.reset()
    
@@ -1215,7 +1522,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.C_Matrix_np = np.array(self.C_Matrix)
     
     def keyPressEvent(self, qKeyEvent):
-        print(qKeyEvent.key())
+        #print(qKeyEvent.key())
         if qKeyEvent.key() == QtCore.Qt.Key_Return:
             
             if self.tabs.currentIndex() == 0:

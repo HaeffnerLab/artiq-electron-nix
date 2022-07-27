@@ -26,6 +26,8 @@ in
         ps.pandas
         ps.numpy
         ps.vxi11
+        #ps.pyvisa
+	#ps.visa
         #ps.PyQt5
         ps.scipy
         #ps.numba
