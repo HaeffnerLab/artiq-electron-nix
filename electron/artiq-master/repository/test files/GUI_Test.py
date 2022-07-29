@@ -366,17 +366,35 @@ class Electron(HasEnvironment):
 
             self.mutate_dataset('optimize.result.count_tot',self.index*self.update_cycle+k,count)
 
+    
+    def set_dac_voltages(self):
+        #,dac_vs):
+        self.loadDACoffset()
+        self.get_dac_vs()
+        # self.zotino0.init()
+        # self.core.break_realtime() 
+        # for pin in range(self.ne): # doesn't include channel 0 for the trigger level
+        #     delay(500*us)
+        #     self.zotino0.write_dac(self.pins[pin],dac_vs[pin])
+        #     index = 10+int(np.rint(dac_vs[pin]))
+        #     self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
+        # self.zotino0.load()
+        # print("Loaded dac voltages")
+        self.load_voltages()
+
     @ kernel
-    def set_dac_voltages(self,dac_vs):
+    def load_voltages(self):
+        self.core.reset()
         self.zotino0.init()
         self.core.break_realtime() 
-        for pin in range(self.ne): # doesn't include channel 0 for the trigger level
+        for pin in range(self.ne):
             delay(500*us)
-            self.zotino0.write_dac(self.pins[pin],dac_vs[pin])
-            index = 10+int(np.rint(dac_vs[pin]))
+            self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
+            index = 10+int(np.rint(self.dac_vs[pin]))
             self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
         self.zotino0.load()
         print("Loaded dac voltages")
+
 
 
 import vxi11
@@ -477,8 +495,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.ne = self.HasEnvironment.ne
         self.e=np.full(self.ne, 0.0)    
     
-    def set_dac_voltages(self,dac_vs):
-        self.HasEnvironment.set_dac_voltages(dac_vs)
+    def set_dac_voltages(self):#,dac_vs):
+        self.HasEnvironment.set_dac_voltages()#dac_vs)
 
     def setup_UI(self):
   
@@ -836,8 +854,8 @@ class MyTabWidget(HasEnvironment,QWidget):
 
     def on_load_multipole_voltages_click(self):
         self.on_update_dataset_click()
-        self.e.append(self.get_dataset(key="optimize.parameter.trigger_level"))       
-        self.set_dac_voltages(self.e)
+        self.e.append(self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level"))       
+        self.set_dac_voltages()
         # print("on_multipole_click has updated voltages and mutated datasets")
 
     def on_voltage_click(self):
