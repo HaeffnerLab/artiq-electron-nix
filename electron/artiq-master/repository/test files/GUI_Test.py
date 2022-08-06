@@ -91,7 +91,7 @@ class Electron(HasEnvironment):
         self.ne = int(len(self.pins)) # number of electrodes
         self.np = 10 # number of experiment parameters
         
-        self.run_mode = 0 # 0: pulse counting, 1: ROI counting (pulse 390), 2: histogram counting (pulse 390)
+        self.run_mode = 0 # 0: pulse counting, 1: ROI counting (pulse 390), 2: histogram counting (pulse 390), 3: only outputting pulses and dacs
         self.bins = 50 # bin number for histogram
         self.update_cycle = 10 # how many datapoints per user_update_check (takes about 500 ms)
     
@@ -138,6 +138,8 @@ class Electron(HasEnvironment):
                 self.kernel_run_ROI_counting()
             elif self.run_mode == 2:
                 self.kernel_run_hist_counting()
+            elif self.run_mode == 3:
+                self.kernel_run_outputting()
 
     def get_run_mode(self):
         self.run_mode = np.int32(self.get_dataset(key="optimize.flag.run_mode"))
@@ -180,6 +182,13 @@ class Electron(HasEnvironment):
             offset[i] = a
         self.offset = offset
 
+    def set_dac_voltages(self):
+        #,dac_vs):
+        self.loadDACoffset()
+        self.get_dac_vs()
+        # self.load_voltages()
+        self.kernel_load_dac()
+
     def check_user_update(self):
         flag_dac = np.int32(self.get_dataset(key="optimize.flag.e"))
         flag_parameter = np.int32(self.get_dataset(key="optimize.flag.p"))
@@ -204,6 +213,8 @@ class Electron(HasEnvironment):
                 self.set_dataset('optimize.result.bin_times', [-1]*0,broadcast=True)
                 # print("Experiment terminated")
                 return False
+            elif self.run_mode == 3:
+                return False
         if flag_dac == 1:
             # load dac voltages
             self.get_dac_vs()
@@ -213,7 +224,49 @@ class Electron(HasEnvironment):
             self.get_parameter_list()
             self.set_dataset(key="optimize.flag.p", value = 0, broadcast=True, persist=True)
         return True
+    
+
+    @ kernel
+    def kernel_load_dac(self):
+        self.zotino0.init()
+        self.core.break_realtime() 
+        for pin in range(self.ne):
+            delay(500*us)
+            self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
+            index = 10+int(np.rint(self.dac_vs[pin]))
+            self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
+        self.zotino0.load()
+        print("Loaded dac voltages")
+
+
+    @ kernel
+    def kernel_run_outputting(self):
+        self.core.break_realtime()
+        t_load = np.int32(self.parameter_list[0])
+        t_wait = np.int32(self.parameter_list[1])
+        t_delay = np.int32(self.parameter_list[2])
+        # t_acquisition = np.int32(self.parameter_list[3])
+        # trigger_level = self.parameter_list[5]
+        number_of_repetitions = np.int32(self.parameter_list[6])
+        number_of_datapoints = np.int32(self.parameter_list[7])
+        
+        if self.load_dac:
+            self.kernel_load_dac()
             
+        for k in range(self.update_cycle):
+            for j in range(number_of_repetitions):
+                self.core.break_realtime()
+                with sequential:
+                    self.ttl8.on()
+                    delay(t_load*us)
+                    with parallel:
+                        self.ttl8.off()
+                        self.ttl9.on()
+                    delay(t_wait*ns)
+                    with parallel:
+                        self.ttl9.off()
+                        self.ttl10.pulse(2*us)
+                    delay(1*us)
 
     @ kernel
     def kernel_run_ROI_counting(self):
@@ -227,16 +280,8 @@ class Electron(HasEnvironment):
         number_of_datapoints = np.int32(self.parameter_list[7])
         
         if self.load_dac:
-            self.zotino0.init()
-            self.core.break_realtime() 
-            for pin in range(self.ne):
-                delay(500*us)
-                self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
-                index = 10+int(np.rint(self.dac_vs[pin]))
-                self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
-            self.zotino0.load()
-            print("Loaded dac voltages")
-
+            self.kernel_load_dac()
+            
         for k in range(self.update_cycle):
             countrate_tot = 0 
             for j in range(number_of_repetitions):
@@ -278,15 +323,7 @@ class Electron(HasEnvironment):
         gate_rising_time = t_total + 1000 # hard coded gate_rising_time for now
 
         if self.load_dac:
-            self.zotino0.init()
-            self.core.break_realtime() 
-            for pin in range(self.ne):
-                delay(500*us)
-                self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
-                index = 10+int(np.rint(self.dac_vs[pin]))
-                self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
-            self.zotino0.load()
-            print("Loaded dac voltages")
+            self.kernel_load_dac()
 
         for k in range(self.update_cycle):
             for j in range(number_of_repetitions):
@@ -344,15 +381,7 @@ class Electron(HasEnvironment):
         self.core.break_realtime()
         detection_time = np.int32(self.parameter_list[4])
         if self.load_dac:
-            self.zotino0.init()
-            self.core.break_realtime() 
-            for pin in range(self.ne):
-                delay(500*us)
-                self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
-                index = 10+int(np.rint(self.dac_vs[pin]))
-                self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
-            self.zotino0.load()
-            print("Loaded dac voltages")
+            self.kernel_load_dac()
 
         if self.index == 0:
             self.ttl8.on() # AOM
@@ -365,22 +394,6 @@ class Electron(HasEnvironment):
             count = self.ttl2.count(t_count)
 
             self.mutate_dataset('optimize.result.count_tot',self.index*self.update_cycle+k,count)
-
-    
-    def set_dac_voltages(self):
-        #,dac_vs):
-        self.loadDACoffset()
-        self.get_dac_vs()
-        # self.zotino0.init()
-        # self.core.break_realtime() 
-        # for pin in range(self.ne): # doesn't include channel 0 for the trigger level
-        #     delay(500*us)
-        #     self.zotino0.write_dac(self.pins[pin],dac_vs[pin])
-        #     index = 10+int(np.rint(dac_vs[pin]))
-        #     self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
-        # self.zotino0.load()
-        # print("Loaded dac voltages")
-        self.load_voltages()
 
     @ kernel
     def load_voltages(self):
@@ -766,23 +779,28 @@ class MyTabWidget(HasEnvironment,QWidget):
         # add make hist button, this is to populate the histogram dataset based on bin times dataset for plotting histogram in applet
         hist_button = QPushButton('Make histogram', self)
         hist_button.clicked.connect(self.HasEnvironment.make_hist)
-        grid4.addWidget(hist_button, 12, 8)
+        grid4.addWidget(hist_button, 11, 8)
 
         # add pulse counting button, this is to set run_mode = 0 and run the kernel pulse counting
         self.pc_button = QPushButton('Run Pulse Counting', self)
         self.pc_button.clicked.connect(self.on_pulse_counting_click)
-        grid4.addWidget(self.pc_button, 13, 8)
+        grid4.addWidget(self.pc_button, 12, 8)
 
 
         # add ROI counting button, this is to set run_mode = 1 and run the kernel ROI counting
         self.rc_button = QPushButton('Run ROI Counting', self)
         self.rc_button.clicked.connect(self.on_roi_counting_click)
-        grid4.addWidget(self.rc_button, 14, 8)
+        grid4.addWidget(self.rc_button, 13, 8)
 
         # add hist counting button, this is to set run_mode = 2 and run the kernel histogram counting
         self.hc_button = QPushButton('Run Hist Counting', self)
         self.hc_button.clicked.connect(self.on_hist_counting_click)
-        grid4.addWidget(self.hc_button, 15, 8)
+        grid4.addWidget(self.hc_button, 14, 8)
+
+        # add hist counting button, this is to set run_mode = 2 and run the kernel histogram counting
+        self.op_button = QPushButton('Run Outputting', self)
+        self.op_button.clicked.connect(self.on_outputting_click)
+        grid4.addWidget(self.op_button, 15, 8)
 
         # add stop button, this is to terminate the current run program on the kernel and reset the dataset
         t_button = QPushButton('Terminate', self)
@@ -885,6 +903,10 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",2, broadcast=True, persist=True)
         self.on_run_click()
 
+    def on_outputting_click(self):
+        self.HasEnvironment.set_dataset("optimize.flag.run_mode",3, broadcast=True, persist=True)
+        self.on_run_click()
+
     def on_run_click(self):
         self.thread = QThread() # create a QThread object
         self.worker = Worker(self.long_run_task) # create a worker object
@@ -900,6 +922,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.lm_button.setEnabled(False)
         self.rc_button.setEnabled(False)
         self.hc_button.setEnabled(False)
+        self.op_button.setEnabled(False)
         self.pc_button.setEnabled(False)
 
         self.thread.finished.connect(
@@ -913,6 +936,9 @@ class MyTabWidget(HasEnvironment,QWidget):
             )
         self.thread.finished.connect(
             lambda: self.pc_button.setEnabled(True)
+            )
+        self.thread.finished.connect(
+            lambda: self.op_button.setEnabled(True)
             )
 
     def long_run_task(self):
