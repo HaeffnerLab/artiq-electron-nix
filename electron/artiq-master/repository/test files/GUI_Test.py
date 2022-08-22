@@ -88,6 +88,7 @@ class Electron(HasEnvironment):
         # electrodes: [bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,...,tr5,t0,b0,trigger_level]
         # self.pins = [13,15,17,19,21,23,7,5,3,1,24,2,26,28,30,9,20,18,16,14,4,11] # old pin matching board, Unused dac channels: 0 (bad), 6,8,10,12,22 (bad) ,25,27,29,31
         self.pins = [21,22,11,24,25,6,17,13,15,14,8,10,16,12,23,18,4,3,2,1,9,20,0] # commercialized pin matching board, used dac channels: 1-25, last channel 0 is for the threshold of the threshold detector
+        self.gnd = [5,7,19] # gnd pins
         self.ne = int(len(self.pins)) # number of electrodes
         self.np = 10 # number of experiment parameters
         
@@ -228,12 +229,32 @@ class Electron(HasEnvironment):
 
     @ kernel
     def kernel_load_dac(self):
+        self.core.reset()
         self.zotino0.init()
         self.core.break_realtime() 
         for pin in range(self.ne):
             delay(500*us)
             self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
             index = 10+int(np.rint(self.dac_vs[pin]))
+            self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])
+        for pin in self.gnd:
+            delay(500*us)
+            self.zotino0.write_dac(pin,0.0)
+            index = 10
+            self.zotino0.write_offset(pin,self.offset[pin][index])
+        self.zotino0.load()
+        print("Loaded dac voltages")
+
+
+    @ kernel
+    def set_individual_electrode_voltages(self,e):
+        self.core.reset()
+        self.zotino0.init()
+        self.core.break_realtime() 
+        for pin in range(self.ne):
+            delay(500*us)
+            self.zotino0.write_dac(self.pins[pin],e[pin])
+            index = 10+int(np.rint(e[pin]))
             self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
         self.zotino0.load()
         print("Loaded dac voltages")
@@ -259,14 +280,15 @@ class Electron(HasEnvironment):
                 with sequential:
                     self.ttl8.on()
                     delay(t_load*us)
-                    with parallel:
-                        self.ttl8.off()
-                        self.ttl9.on()
+                    self.ttl8.off()
+                    delay(1500*ns) # get rid of the photo diode fall time
+                    self.ttl9.on()  
                     delay(t_wait*ns)
                     with parallel:
                         self.ttl9.off()
                         self.ttl10.pulse(2*us)
-                    delay(1*us)
+                    # delay(1*us)
+                    delay(t_delay*ns)
 
     @ kernel
     def kernel_run_ROI_counting(self):
@@ -612,6 +634,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         v_button = QPushButton('Set Voltage values', self)
         v_button.clicked.connect(self.on_voltage_click)
         grid1.addWidget(v_button, 0, 6, 2, 1)
+
+
         
         #add grid layout (grid1) to tab1
         grid1.setRowStretch(4, 1)
@@ -883,9 +907,20 @@ class MyTabWidget(HasEnvironment,QWidget):
             text = i.text() or "0"
             self.el_list.append(float(text))
         self.e=self.el_list
-        self.e.append(self.get_dataset(key="optimize.parameter.trigger_level"))
-        self.set_dac_voltages(self.e)
-        # print("on_voltage_click has updated voltages")
+        self.e.append(self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level"))
+        # self.HasEnvironment.set_individual_electrode_voltages(self.e)
+
+
+
+        # #self.e is in alphabetical order as in c file: [ bl1,...,bl5,br1,...,br5, b0(grid), t0,tl1,...,tl5,tr1,..,tr5]
+        self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br4':self.e[8],'br5':self.e[9],'b0':self.e[21],'t0':self.e[20],'tl1':self.e[10],'tl2':self.e[11],'tl3':self.e[12],'tl4':self.e[13],'tl5':self.e[14],'tr1':self.e[15],'tr2':self.e[16],'tr3':self.e[17],'tr4':self.e[18],'tr5':self.e[19]}
+        print(self.elec_dict)
+        # # #after adjusting self.e order, same as pin order: [ bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,..,tr5,b0(grid),t0]
+        self.mutate_dataset_electrode()
+
+
+        # self.set_dac_voltages()
+        # # print("on_voltage_click has updated voltages")
 
     def on_terminate_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.stop",1, broadcast=True, persist=True)
@@ -1163,7 +1198,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         # self.e.append(self.elec_dict['b0'])
         # print(self.e)
         self.mutate_dataset_electrode()
-        self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True, persist=True)
+        # self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True, persist=True)
         # print("update_multipoles has mutated dataset")
 
     def mutate_dataset_electrode(self):
@@ -1181,6 +1216,7 @@ class MyTabWidget(HasEnvironment,QWidget):
                 self.HasEnvironment.set_dataset("optimize.e."+string+str(1+i),self.elec_dict[string+f'{1+i}'], broadcast=True, persist=True)
         self.HasEnvironment.set_dataset("optimize.e.t0",self.elec_dict['t0'], broadcast=True, persist=True)
         self.HasEnvironment.set_dataset("optimize.e.b0",self.elec_dict['b0'], broadcast=True, persist=True)
+        self.HasEnvironment.set_dataset("optimize.flag.e",1, broadcast=True, persist=True)
 
 
     def update_parameters(self):
