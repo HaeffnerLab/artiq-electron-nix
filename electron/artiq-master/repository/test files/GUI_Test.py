@@ -93,7 +93,9 @@ class Electron(HasEnvironment):
 
         # self.pins = [21,22,11,24,25,6,17,13,15,14,8,10,16,12,23,18,4,3,2,1,9,20,0] # commercialized pin matching board, used dac channels: 1-25, last channel 0 is for the threshold of the threshold detector
         self.pin_matching = {"bl1":21,"bl2":22,"bl3":11,"bl4":24,"bl5":25,"br1":6,"br2":17,"br3":13,"br4":15,"br5":14,"tl1":8,"tl2":10,"tl3":16,"tl4":12,"tl5":23,"tr1":18,"tr2":4,"tr3":3,"tr4":2,"tr5":1,"t0":9,"b0":20,"trigger_level":0}
-        self.gnd = [5,7,19] # gnd pins
+        # self.gnd = [5,7,19] # gnd pins
+        self.gnd = [5,7,19,21,22,11,24,25,6,17,13,15,14,8,23,18,1,9,20]
+
         # self.ne = int(len(self.pins)) # number of electrodes
         self.np = 10 # number of experiment parameters
         
@@ -105,6 +107,7 @@ class Electron(HasEnvironment):
         self.controlled_parameters = ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints","bins","update_cycle"]
         self.old_c_file = False
         self.c_file_csv = '/home/electron/artiq/electron/cfile_etrap_gen2_6electrodes_U1U5_uncontrol.csv'
+        # self.c_file_csv = '/home/electron/artiq/electron/cfile_etrap_gen2_6electrodes_with_Grid_U1U5_uncontrol.csv'
         self.controlled_multipoles_dict = {"Grid":'Grid: (V)',"Ex":'Ex:', "Ey":'Ey:', "Ez":'Ez:', "U1":'U1:', "U2":'U2:', "U3":'U3:', "U4":'U4:', "U5":'U5:', "U6":'U6:'}
         self.controlled_parameters_dict = {"t_load":'Load time (us):', "t_wait":'Wait time (ns):', "t_delay":'Delay time (ns):',"t_acquisition":'Acquisition time(ns):' , "pulse_counting_time":'Pulse counting time (ms):',"trigger_level":'Trigger level (V):',"number_of_repetitions":'# Repetitions:', "number_of_datapoints":'# Datapoints:', "bins":'# Bins:',"update_cycle":'# Update cycles:'}
         self.controlled_electrodes_dict = ["tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr4","tr5","t0","br1","br2","br3","br4","br5","bl1","bl2","bl3","bl4","bl5","b0","trigger_level"]
@@ -1294,11 +1297,24 @@ class MyTabWidget(HasEnvironment,QWidget):
         if not self.old_c_file:
             df = pd.read_csv(self.c_file_csv,index_col = 0)
 
+
+
             voltages = pd.Series(np.zeros(len(self.controlled_electrodes)-1),index = df.index.values)
-            for m in self.controlled_multipoles:
+            grid_m = {'C': 9.50146627948246e-05,'Ey': -2.933307248293106e-06,'Ez': -4.322228417243746e-06,'Ex': 0.0001595407962410731,'U3': 4.18095666141926e-06,'U4': -8.266299827308109e-05,'U2': -3.381649220001519e-05,'U5': -9.733216995247544e-05,'U1': -0.00021359840980261248}
+            V_grid = self.mul_dict["Grid"]
+            print("V_grid:",V_grid)
+            for m in self.controlled_multipoles:   
                 if m == "Grid":
                     pass
                 else:
+                    self.mul_dict[m] = self.mul_dict[m] - grid_m[m]*V_grid
+                    # voltages += df[m] * self.mul_dict[m]
+            print("Multipoles:",self.mul_dict)
+            for m in self.controlled_multipoles:   
+                if m == "Grid":
+                    pass
+                else:
+                    # self.mul_dict[m] = self.mul_dict[m] - grid_m[m]*V_grid
                     voltages += df[m] * self.mul_dict[m]
 
             self.elec_dict = voltages.to_dict()
