@@ -16,12 +16,11 @@ import sys
 import csv
 from matplotlib import pyplot as plt
 
-
 class single_ttl(EnvExperiment):
     def build(self):
         self.setattr_device('core')
         self.setattr_device('zotino0') # artiq DAC
-        self.setattr_device('ttl16')
+        self.setattr_device('ttl11')
         self.setattr_device('ttl18')
         
 
@@ -34,17 +33,26 @@ class single_ttl(EnvExperiment):
     @kernel
     def run(self):
 
+
+        
         self.core.reset()
         self.core.break_realtime()
+        # self.ttl11.on()
+        # delay(1*s)
+
+        self.ttl11.on()
+
+        
         # self.zotino0.init()
         # delay(500*us)
         # self.zotino0.write_dac(4,0.01)
         # self.zotino0.load()
-        for i in range(2):
-            # self.core.break_realtime()
-            with parallel:
-                self.ttl16.pulse(20*us)
-                with sequential:
-                    delay(20*ns)
-                    self.ttl18.pulse(20*ns)
-            delay(10*us)
+        # for i in range(2):
+        #     # self.core.break_realtime()
+        #     with parallel:
+        #         self.ttl11.pulse(20*us)
+        #         with sequential:
+        #             delay(20*ns)
+        #             #self.ttl18.pulse(20*ns)
+        #     delay(10*us)
+        

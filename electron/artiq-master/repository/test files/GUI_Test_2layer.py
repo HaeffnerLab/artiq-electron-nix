@@ -551,7 +551,7 @@ import vxi11
 import matplotlib.pyplot as plt
 
 class rigol():
-    def __init__(self,ip=113,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=20,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
+    def __init__(self,ip=101,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=20,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
         # self.sampling_time = sampling_time # 
         
         # initial phase != 0, voltage 0 ~ -20 V, need to manually adjust and see on the scope or AWG
@@ -1059,9 +1059,15 @@ class MyTabWidget(HasEnvironment,QWidget):
         phase = self.dev_list[4]
         period_ej = self.dev_list[5]*1e-9
         sampling_time = self.dev_list[6]*1e-9
-        self.rigol113 =  rigol(113,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
+
+        #uncomment
+        self.rigol101 =  rigol(101,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
+
         # self.rigol117 =  rigol(117,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
-        self.rigol113.run()
+
+        #uncomment
+        self.rigol101.run()
+
         # self.rigol117.run()
 
     def on_update_dataset_click(self):
@@ -1091,7 +1097,7 @@ class MyTabWidget(HasEnvironment,QWidget):
     def on_load_individual_voltage_click(self):
         self.elec_dict = {}
         for e in self.electrode_spin:
-            text = elf.electrode_spin[e].text() or "0"
+            text = self.electrode_spin[e].text() or "0"
             self.elec_dict[e] = float(text)
         
         self.elec_dict["trigger_level"] = self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level")
@@ -1559,7 +1565,7 @@ class Worker(QObject):
         self.finished.emit()
 
 
-class Electron_GUI(Electron, EnvExperiment):
+class Electron_GUI_2layer(Electron, EnvExperiment):
     def build(self):
         Electron.build(self)
 
