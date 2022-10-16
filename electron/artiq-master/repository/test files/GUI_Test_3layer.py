@@ -27,8 +27,8 @@ class Electron(HasEnvironment):
         self.setattr_device('ttl8') # use this channel to trigger AOM, connect to switch near VCO and AOM
         self.setattr_device('ttl9') # use this channel to trigger R&S for tickle pulse, connect to R&S
         self.setattr_device('ttl10') # use this channel to trigger extraction pulse, connect to RIGOL external trigger
-        
-        self.setattr_device("ttl12") # sync with aom ttl8 pulse in run_outputting mode
+        self.setattr_device("ttl11")
+        self.setattr_device("ttl12")
         self.setattr_device("ttl13")
         self.setattr_device("ttl16")
         # self.setattr_device('scheduler') # scheduler used
@@ -64,9 +64,9 @@ class Electron(HasEnvironment):
         # self.set_dataset(key="optimize.flag.stop", value = 0, broadcast=True, persist=True) # whether or not terminate the experiment
         # self.set_dataset(key="optimize.flag.run_mode", value = np.int(0), broadcast=True, persist=True) # run mode,0: pulse counting, 1: ROI counting (pulse 390), 2: histogram counting (pulse 390)
         
-        # # parameters: t_load(us),t_wait(ns),t_delay(ns), t_acquisition(ns),pulse_counting_time(ms), trigger_level (V), # repetitions, # datapoints
+        # # parameters: t_load(us),t_wait(us),t_delay(ns), t_acquisition(ns),pulse_counting_time(ms), trigger_level (V), # repetitions, # datapoints
         # self.set_dataset(key="optimize.parameter.t_load", value = np.int(200), broadcast=True, persist=True) # t_load(us)
-        # self.set_dataset(key="optimize.parameter.t_wait", value = np.int(100), broadcast=True, persist=True) # t_wait(ns)
+        # self.set_dataset(key="optimize.parameter.t_wait", value = np.int(100), broadcast=True, persist=True) # t_wait(us)
         # self.set_dataset(key="optimize.parameter.t_delay", value = np.int(450), broadcast=True, persist=True) # t_delay(ns)
         # self.set_dataset(key="optimize.parameter.t_acquisition", value = np.int(600), broadcast=True, persist=True) # t_acquisition(ns)
         # self.set_dataset(key="optimize.parameter.pulse_counting_time", value = np.int(500), broadcast=True, persist=True) # pulse_counting_time(ms)
@@ -83,7 +83,8 @@ class Electron(HasEnvironment):
         self.set_dataset('optimize.result.count_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI in optimize
         self.set_dataset('optimize.result.countrate_ROI',[-2]*self.number_of_datapoints,broadcast=True) # Number of pulses sent to ttl2 with ROI in optimize without accumulating
         self.set_dataset('optimize.result.bin_times', [-1]*0,broadcast=True) #self.number_of_bins*self.number_of_datapoints,broadcast=True) # Small bins for histogram
-
+        self.set_dataset('optimize.result.lifetime.counts',[-50]*12,broadcast=True)
+        self.set_dataset('optimize.result.lifetime.wait_times',[-50]*12,broadcast=True)
 
         # # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3
         # self.pins = [13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3 (original br4), 6,8,10,12,22 (bad) ,25,27,29,31
@@ -114,7 +115,7 @@ class Electron(HasEnvironment):
         self.c_file_csv = '/home/electron/artiq/electron/cfile_etrap_gen2_6electrodes_U1U5_uncontrol.csv'
         # self.c_file_csv = '/home/electron/artiq/electron/cfile_etrap_gen2_6electrodes_with_Grid_U1U5_uncontrol.csv'
         self.controlled_multipoles_dict = {"Grid":'Grid: (V)',"Ex":'Ex:', "Ey":'Ey:', "Ez":'Ez:', "U1":'U1:', "U2":'U2:', "U3":'U3:', "U4":'U4:', "U5":'U5:',"U6":'U6:'}
-        self.controlled_parameters_dict = {"t_load":'Load time (us):', "t_wait":'Wait time (ns):', "t_delay":'Delay time (ns):',"t_acquisition":'Acquisition time(ns):' , "pulse_counting_time":'Pulse counting time (ms):',"trigger_level":'Trigger level (V):',"number_of_repetitions":'# Repetitions:', "number_of_datapoints":'# Datapoints:', "bins":'# Bins:',"update_cycle":'# Update cycles:'}
+        self.controlled_parameters_dict = {"t_load":'Load time (us):', "t_wait":'Wait time (us):', "t_delay":'Delay time (ns):',"t_acquisition":'Acquisition time(ns):' , "pulse_counting_time":'Pulse counting time (ms):',"trigger_level":'Trigger level (V):',"number_of_repetitions":'# Repetitions:', "number_of_datapoints":'# Datapoints:', "bins":'# Bins:',"update_cycle":'# Update cycles:'}
         self.controlled_electrodes_dict = ["tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr4","tr5","tg","br1","br2","br3","br4","br5","bl1","bl2","bl3","bl4","bl5","trigger_level"]
         self.ne = int(len(self.controlled_electrodes)) # number of electrodes
         
@@ -150,6 +151,9 @@ class Electron(HasEnvironment):
         self.get_dac_vs()
         self.get_parameter_dict()
         self.get_run_mode()
+        if self.run_mode == 4:
+            self.kernel_run_lifetime_measurement()
+            return
         number_of_datapoints = np.int(self.parameter_dict["number_of_datapoints"])
         self.update_cycle = np.int(self.parameter_dict["update_cycle"])
         self.count_tot = 0
@@ -167,6 +171,7 @@ class Electron(HasEnvironment):
                 self.kernel_run_hist_counting()
             elif self.run_mode == 3:
                 self.kernel_run_outputting()
+            
 
     def get_run_mode(self):
         self.run_mode = np.int32(self.get_dataset(key="optimize.flag.run_mode"))
@@ -355,7 +360,7 @@ class Electron(HasEnvironment):
                         self.ttl16.off()
                         # delay(1500*ns) # get rid of the photo diode fall time
                         self.ttl9.on()  
-                    delay(t_wait*ns)
+                    delay(t_wait*us)
                     with parallel:
                         self.ttl9.off()
                         self.ttl10.pulse(2*us)
@@ -381,15 +386,19 @@ class Electron(HasEnvironment):
             for j in range(number_of_repetitions):
                 self.core.break_realtime()
                 with sequential:
-                    self.ttl8.on()
+                    self.ttl16.on()
                     delay(t_load*us)
                     with parallel:
-                        self.ttl8.off()
+                        self.ttl16.off()
                         self.ttl9.on()
-                    delay(t_wait*ns)
+                    delay(t_wait*us)
                     with parallel:
                         self.ttl9.off()
                         self.ttl10.pulse(2*us)
+                        self.ttl11.pulse(2*us)
+                        with sequential:
+                            delay(200*ns)
+                            self.ttl12.pulse(2*us)
                         with sequential:
                             delay(t_delay*ns)
                             t_count = self.ttl2.gate_rising(t_acquisition*ns)
@@ -398,7 +407,7 @@ class Electron(HasEnvironment):
                         count = 1
                     self.count_tot += count
                     countrate_tot += count
-                    delay(1*us)
+                    delay(10*us)
             self.mutate_dataset('optimize.result.count_ROI',self.index*self.update_cycle+k,self.count_tot)
             self.mutate_dataset('optimize.result.countrate_ROI',self.index*self.update_cycle+k,countrate_tot)
 
@@ -415,7 +424,7 @@ class Electron(HasEnvironment):
         number_of_datapoints = self.ordered_parameter_list[5]
         pulse_counting_time = self.ordered_parameter_list[6]
 
-        t_total = t_load*1000+t_wait+t_delay+t_acquisition+1000 # cycle duration (ns)
+        t_total = t_load*1000+t_wait*1000+t_delay+t_acquisition+1000 # cycle duration (ns)
         gate_rising_time = t_total + 1000 # hard coded gate_rising_time for now
 
         if self.load_dac:
@@ -430,7 +439,7 @@ class Electron(HasEnvironment):
                 self.ttl8.on()
                 delay(t_load*us)   
                 self.ttl8.off()
-                delay(t_wait*ns) # negative t_wait cause it to output 6/10
+                delay(t_wait*us) # negative t_wait cause it to output 6/10
                 self.ttl10.pulse(200*ns)
                 delay((t_delay+t_acquisition)*ns)
                 delay(1*us)
@@ -487,7 +496,7 @@ class Electron(HasEnvironment):
             self.kernel_load_dac()
 
         if self.index == 0:
-            self.ttl8.on() # AOM
+            self.ttl16.on() # AOM
         # self.core.break_realtime()
         for k in range(self.update_cycle):
             self.core.break_realtime()
@@ -497,6 +506,50 @@ class Electron(HasEnvironment):
             count = self.ttl2.count(t_count)
 
             self.mutate_dataset('optimize.result.count_tot',self.index*self.update_cycle+k,count)
+
+    @ kernel
+    def kernel_run_lifetime_measurement(self):
+        self.core.break_realtime()
+        t_load = self.ordered_parameter_list[0]
+        # t_wait = self.ordered_parameter_list[1]
+        t_delay = self.ordered_parameter_list[2]
+        t_acquisition = self.ordered_parameter_list[3]
+        number_of_repetitions = self.ordered_parameter_list[4]
+        number_of_datapoints = self.ordered_parameter_list[5]
+        pulse_counting_time = self.ordered_parameter_list[6]
+        wait_times = [ 1.000,2.154,4.641,10.000,21.544,46.415,100.000,215.443,464.158,1000.000,10000.0,50000.0]
+
+        if self.load_dac:
+            self.kernel_load_dac()
+        
+        for i in range(len(wait_times)):
+            count_tot = 0
+            t_wait = wait_times[i]
+            for j in range(number_of_repetitions):
+                self.core.break_realtime()
+                with sequential:
+                    self.ttl16.on()
+                    delay(t_load*us)
+                    with parallel:
+                        self.ttl16.off()
+                        self.ttl9.on()
+                    delay(t_wait*us)
+                    with parallel:
+                        self.ttl9.off()
+                        self.ttl10.pulse(2*us)
+                        self.ttl11.pulse(2*us)
+                        with sequential:
+                            delay(200*ns)
+                            self.ttl12.pulse(2*us)
+                        with sequential:
+                            delay(t_delay*ns)
+                            t_count = self.ttl2.gate_rising(t_acquisition*ns)
+                    count = self.ttl2.count(t_count)
+                    if count > 0:
+                        count = 1
+                    count_tot += count   
+            self.mutate_dataset('optimize.result.lifetime.counts',i,count_tot)
+            self.mutate_dataset('optimize.result.lifetime.wait_times',i,wait_times[i])
 
     # @ kernel
     # def load_voltages(self):
@@ -919,10 +972,15 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.op_button.clicked.connect(self.on_outputting_click)
         grid4.addWidget(self.op_button, 15, 8)
 
+        # add lifetime measurement button, this is to set run_mode = 4 and run the kernel histogram counting
+        self.op_button = QPushButton('Lifetime Measurement', self)
+        self.op_button.clicked.connect(self.on_lifetime_measurement_click)
+        grid4.addWidget(self.op_button, 16, 8)
+
         # add stop button, this is to terminate the current run program on the kernel and reset the dataset
         t_button = QPushButton('Terminate', self)
         t_button.clicked.connect(self.on_terminate_click)
-        grid4.addWidget(t_button, 16, 8)
+        grid4.addWidget(t_button, 16+1, 8)
 
         grid4.setRowStretch(4, 1)
         self.tab4.setLayout(grid4)
@@ -1043,6 +1101,10 @@ class MyTabWidget(HasEnvironment,QWidget):
 
     def on_outputting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",3, broadcast=True, persist=True)
+        self.on_run_click()
+
+    def on_lifetime_measurement_click(self):
+        self.HasEnvironment.set_dataset("optimize.flag.run_mode",4, broadcast=True, persist=True)
         self.on_run_click()
 
     def on_run_click(self):

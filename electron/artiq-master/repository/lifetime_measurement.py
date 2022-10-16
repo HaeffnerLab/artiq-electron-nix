@@ -1,5 +1,3 @@
-
-
 import sys
 import os
 #import datetime import datetime
@@ -23,19 +21,69 @@ class lifetime_experiment(EnvExperiment):
          self.setattr_device('ttl8') # use this channel to trigger AOM, connect to AOM
          self.setattr_device('ttl9') # use this channel to trigger R&S for exciting motion, connect to R&S
          self.setattr_device('ttl10') # use this channel to trigger extraction pulse, connect to RIGOL
+         
          self.setattr_argument('t_load',NumberValue(default=100,unit='us',scale=1,ndecimals=0,step=1)) # loading time
          self.setattr_argument('t_wait_start',NumberValue(default=50,unit='us',scale=1,ndecimals=0,step=1)) # wait time start
          self.setattr_argument('t_wait_stop',NumberValue(default=1050,unit='us',scale=1,ndecimals=0,step=1)) # wait time stop
          self.setattr_argument('number_of_repetitions', NumberValue(default=10000,unit=' ',scale=1,ndecimals=0,step=1)) #how many experiment cycles per data point
          self.setattr_argument('number_of_datapoints', NumberValue(default=10,unit=' ',scale=1,ndecimals=0,step=1)) #how many data points on the plot
-         self.setattr_argument('t_delay', NumberValue(default=600,unit='ns',scale=1,ndecimals=0,step=1)) # the delay between the extraction pulse and the MCP signal
-         self.setattr_argument('time_window_width', NumberValue(default=100,unit='ns',scale=1,ndecimals=0,step=1)) # width of the detection time window
+         self.setattr_argument('t_delay', NumberValue(default=500,unit='ns',scale=1,ndecimals=0,step=1)) # the delay between the extraction pulse and the MCP signal
+         self.setattr_argument('time_window_width', NumberValue(default=200,unit='ns',scale=1,ndecimals=0,step=1)) # width of the detection time window
          self.setattr_device('scheduler') # scheduler used
 
     def prepare(self):
         self.set_dataset('count_lifetime',[-50]*self.number_of_datapoints,broadcast=True)
 
    
+    
+
+
+    @ kernel
+    def kernel_run_lifetime_measurement(self):
+        self.core.break_realtime()
+        t_load = self.ordered_parameter_list[0]
+        t_wait = self.ordered_parameter_list[1]
+        t_delay = self.ordered_parameter_list[2]
+        t_acquisition = self.ordered_parameter_list[3]
+        number_of_repetitions = self.ordered_parameter_list[4]
+        number_of_datapoints = self.ordered_parameter_list[5]
+        pulse_counting_time = self.ordered_parameter_list[6]
+        wait_times = [ 1.000,2.154,4.641,10.000,21.544,46.415,100.000,215.443,464.158,1000.000,10000.0,50000.0]
+
+        if self.load_dac:
+            self.kernel_load_dac()
+        
+        for i in range(len(wait_times)):
+            count_tot = 0
+            t_wait = wait_times[i]
+            for j in range(number_of_repetitions):
+                self.core.break_realtime()
+                with sequential:
+                    self.ttl16.on()
+                    delay(t_load*us)
+                    with parallel:
+                        self.ttl16.off()
+                        self.ttl9.on()
+                    delay(t_wait*us)
+                    with parallel:
+                        self.ttl9.off()
+                        self.ttl10.pulse(2*us)
+                        self.ttl11.pulse(2*us)
+                        with sequential:
+                            delay(200*ns)
+                            self.ttl12.pulse(2*us)
+                        with sequential:
+                            delay(t_delay*ns)
+                            t_count = self.ttl2.gate_rising(t_acquisition*ns)
+                    count = self.ttl2.count(t_count)
+                    if count > 0:
+                        count = 1
+                    count_tot += count   
+            self.mutate_dataset('count_lifetime',i,count_tot)
+            self.mutate_dataset('count_lifetime',i,wait_times[i])
+         
+
+
     @kernel
     def run(self):
         self.core.reset()
