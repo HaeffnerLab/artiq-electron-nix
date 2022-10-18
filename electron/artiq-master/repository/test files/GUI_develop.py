@@ -19,7 +19,7 @@ import pandas as pd
 
 import config
 
-class Electron(HasEnvironment):
+class ElectronBase(HasEnvironment):
     def build(self, config_name='Electron'):
         self.config = getattr(config, config_name)
         if hasattr(self.config, 'devices')
@@ -69,9 +69,11 @@ class Electron(HasEnvironment):
         MainWindow.show()
         ret = app.exec_()
 
+
     def run(self):
         return
-        
+
+
     def setupUi(self, win):
         self.title = 'Electron GUI'
         self.left = 0
@@ -80,7 +82,7 @@ class Electron(HasEnvironment):
         self.height = 600 # 200
         win.setWindowTitle(self.title)
         win.setGeometry(self.left, self.top, self.width, self.height)
-        self.tab_widget = MyTabWidget(self,win)
+        self.tab_widget = MyTabWidget(self, win, self.config)
         win.setCentralWidget(self.tab_widget)
 
 
@@ -89,6 +91,9 @@ class Electron(HasEnvironment):
         self.get_dac_vs()
         self.get_parameter_dict()
         self.get_run_mode()
+        if self.run_mode == 4:
+            self.kernel_run_lifetime_measurement()
+            return
         number_of_datapoints = np.int(self.parameter_dict["number_of_datapoints"])
         self.update_cycle = np.int(self.parameter_dict["update_cycle"])
         self.count_tot = 0
@@ -107,29 +112,12 @@ class Electron(HasEnvironment):
             elif self.run_mode == 3:
                 self.kernel_run_outputting()
 
+
     def get_run_mode(self):
         self.run_mode = np.int32(self.get_dataset(key="optimize.flag.run_mode"))
 
-    def get_dac_vs(self):
-        # dac_vs = []
-        # for i in ["bl"]:
-        #     for j in ["1","2","3","4","5"]:
-        #         dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
-        # for i in ["br"]:
-        #     for j in ["1","2","3","4", "5"]:
-        #         dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
-        # for i in ["tl"]:
-        #     for j in ["1","2","3","4","5"]:
-        #         dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
-        # for i in ["tr"]:
-        #     for j in ["1","2","3","4", "5"]:
-        #         dac_vs.append(self.get_dataset(key="optimize.e."+i+j))
-        # # dac_vs.append(self.get_dataset(key="optimize.e.btr4"))
-        # dac_vs.append(self.get_dataset(key="optimize.e.t0"))
-        # dac_vs.append(self.get_dataset(key="optimize.e.b0"))
-        # dac_vs.append(self.get_dataset(key="optimize.parameter.trigger_level")) # get the threshold voltage for the threshold detector
-        # self.dac_vs = dac_vs
 
+    def get_dac_vs(self):
         dac_vs = {}
         self.dac_pins = []
         self.dac_pins_voltages = []
@@ -144,6 +132,7 @@ class Electron(HasEnvironment):
                 self.dac_pins_voltages.append(self.get_dataset(key="optimize.e."+e))
         self.dac_vs = dac_vs
 
+
     def get_parameter_dict(self):
         self.parameter_name_list = []
         self.parameter_value_list = []
@@ -155,6 +144,7 @@ class Electron(HasEnvironment):
             self.parameter_value_list.append(parameter_dict[p])
         self.parameter_dict = parameter_dict
         self.get_parameter_list()
+
 
     def get_parameter_list(self):
         t_load_index = self.parameter_name_list.index("t_load")
@@ -176,6 +166,8 @@ class Electron(HasEnvironment):
 
         return [t_load,t_wait,t_delay,t_acquisition,number_of_repetitions,number_of_datapoints,pulse_counting_time]
 
+
+    #TODO: exist difference from 3-layer, ?dac_calibration_fit
     def loadDACoffset(self):
         # create list of lines from dataset
         f = '/home/electron/artiq/electron/zotino_offset.txt'
@@ -186,12 +178,14 @@ class Electron(HasEnvironment):
             offset[i] = a
         self.offset = offset
 
+
     def set_dac_voltages(self):
         #,dac_vs):
         self.loadDACoffset()
         self.get_dac_vs()
         # self.load_voltages()
         self.kernel_load_dac()
+
 
     def check_user_update(self):
         flag_dac = np.int32(self.get_dataset(key="optimize.flag.e"))
@@ -230,27 +224,10 @@ class Electron(HasEnvironment):
         return True
     
 
+    #TODO: difference: offset value, related to prev DACOffset diff
     @ kernel
     def kernel_load_dac(self):
-        # self.core.reset()
-        # self.zotino0.init()
-        # self.core.break_realtime() 
-        # for pin in range(self.ne):
-        #     delay(500*us)
-        #     self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
-        #     index = 10+int(np.rint(self.dac_vs[pin]))
-        #     self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])
-        # for pin in self.gnd:
-        #     delay(500*us)
-        #     self.zotino0.write_dac(pin,0.0)
-        #     index = 10
-        #     self.zotino0.write_offset(pin,self.offset[pin][index])
-        # self.zotino0.load()
-        # print("Loaded dac voltages")
-
         
-
-
         self.core.reset()
         self.zotino0.init()
         self.core.break_realtime() 
@@ -273,8 +250,6 @@ class Electron(HasEnvironment):
             self.zotino0.write_offset(pin,self.offset[pin][index])
         self.zotino0.load()
         print("Loaded dac voltages")
-
-
 
 
     @ kernel
@@ -302,6 +277,7 @@ class Electron(HasEnvironment):
         print("Loaded dac voltages")
 
 
+    #TODO: need 'subclass' style config
     @ kernel
     def kernel_run_outputting(self):
         self.core.break_realtime()
@@ -340,6 +316,7 @@ class Electron(HasEnvironment):
                     # delay(1*us)
                     delay(t_delay*ns)
 
+    #TODO: same as above
     @ kernel
     def kernel_run_ROI_counting(self):
         self.core.break_realtime()
@@ -379,6 +356,7 @@ class Electron(HasEnvironment):
                     delay(1*us)
             self.mutate_dataset('optimize.result.count_ROI',self.index*self.update_cycle+k,self.count_tot)
             self.mutate_dataset('optimize.result.countrate_ROI',self.index*self.update_cycle+k,countrate_tot)
+
 
     @ kernel
     def kernel_run_hist_counting(self):
@@ -424,6 +402,7 @@ class Electron(HasEnvironment):
             delay(100*ns)
             self.make_hist()
 
+
     def make_hist(self):
 
         hist_data = self.get_dataset("optimize.result.bin_times")
@@ -450,6 +429,8 @@ class Electron(HasEnvironment):
         self.set_dataset('optimize.result.hist_xs', b, broadcast=True)
         return 
 
+
+    #TODO: ttl8 vs 16, difference?
     @kernel
     def kernel_run_pulse_counting(self):
         self.core.break_realtime()
@@ -476,24 +457,13 @@ class Electron(HasEnvironment):
 
             self.mutate_dataset('optimize.result.count_tot',self.index*self.update_cycle+k,count)
 
-    # @ kernel
-    # def load_voltages(self):
-    #     self.core.reset()
-    #     self.zotino0.init()
-    #     self.core.break_realtime() 
-    #     for pin in range(self.ne):
-    #         delay(500*us)
-    #         self.zotino0.write_dac(self.pins[pin],self.dac_vs[pin])
-    #         index = 10+int(np.rint(self.dac_vs[pin]))
-    #         self.zotino0.write_offset(self.pins[pin],self.offset[self.pins[pin]][index])    
-    #     self.zotino0.load()
-    #     print("Loaded dac voltages")
 
 
 
 import vxi11
 import matplotlib.pyplot as plt
 
+#TODO: Can be initialized by config dict
 class rigol():
     def __init__(self,ip=113,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=20,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
         # self.sampling_time = sampling_time # 
@@ -581,7 +551,7 @@ class rigol():
 # Creating tab widgets
 class MyTabWidget(HasEnvironment,QWidget):
     
-    def __init__(self, Env, parent):
+    def __init__(self, Env, parent, config):
         super(QWidget, self).__init__(parent)
         self.layout = QVBoxLayout(self)
         self.HasEnvironment = Env
@@ -597,13 +567,14 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.setup_UI()
         self.ne = self.HasEnvironment.ne
         self.e=np.full(self.ne, 0.0)
-
-
+        self.config = config
 
     
     def set_dac_voltages(self):#,dac_vs):
         self.HasEnvironment.set_dac_voltages()#dac_vs)
 
+
+    #TODO: the tabs should be setup according to configs
     def setup_UI(self):
   
         # Initialize tab screen
@@ -630,29 +601,22 @@ class MyTabWidget(HasEnvironment,QWidget):
         '''
         grid1 = QGridLayout()  
         self.ELECTRODES = []  # Labels for text entry
-        for n in ['bl', 'br', 't0', 'tl', 'tr', 'b0']:
+        electrode_grids = []
+        for n in self.config.electrodes:
             self.electrode_sec = [] #electrode sections
-            if n=='t0' or n=='b0':
+            if self.config.electrodes[n] is None:
                 ei = n
                 self.electrode_sec.append(ei)
             else:
                 for i in range(1,6):
                     ei = n + f'{i}'
                     self.electrode_sec.append(ei)
+                electrode_grids.append(self.config.electrodes[n])
             self.ELECTRODES.append(self.electrode_sec)
-        # self.ELECTRODES.append('t0:')
-        # self.ELECTRODES.append('b0:')
         self.electrode_spin = {}
         
-        #[values (from list), x-coord (label), x-coord (entryBox), y-coord (first entry)]
-        self.bl_electrodes = [0,0,1,4] 
-        self.br_electrodes = [1,4,5,4]
-        self.tl_electrodes = [3,0,1,10]
-        self.tr_electrodes = [4,4,5,10]
-
-        
         #electrode grid
-        for e in [self.tl_electrodes, self.tr_electrodes, self.bl_electrodes, self.br_electrodes]:            
+        for e in electrode_grids:            
             
             el_values = e[0]
             xcoord_label = e[1]
@@ -677,31 +641,21 @@ class MyTabWidget(HasEnvironment,QWidget):
         label_gap = QLabel('', self)
         grid1.addWidget(label_gap,5,1,1,1)
         
-        #t0
-        spin_t0 = QtWidgets.QDoubleSpinBox(self)
-        spin_t0.setDecimals(4)
-        spin_t0.setRange(-10,10)
-        spin_t0.setSingleStep(0.1)
-        # spin_t0.setValue(self.default_voltages[-2])
-        grid1.addWidget(spin_t0,1,3,1,1)
-        self.electrode_spin[self.ELECTRODES[2][0]] = spin_t0
-        # self.electrodes.append(spin_t0)
-        label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
-        label_t0.setAlignment(QtCore.Qt.AlignRight)
-        grid1.addWidget(label_t0,1,2)
-
-        #b0
-        spin_b0 = QtWidgets.QDoubleSpinBox(self)
-        spin_b0.setRange(-10,10)
-        spin_b0.setDecimals(4)
-        spin_b0.setSingleStep(0.1)
-        # spin_b0.setValue(self.default_voltages[-1])
-        grid1.addWidget(spin_b0,7,3,1,1)
-        # self.electrodes.append(spin_b0)
-        label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
-        self.electrode_spin[self.ELECTRODES[5][0]] = spin_b0
-        label_b0.setAlignment(QtCore.Qt.AlignRight)
-        grid1.addWidget(label_b0,7,2,1,1)        
+        
+        for i in self.config.electrode_sec:
+            spin_i = QtWidgets.QDoubleSpinBox(self)
+            spin_i.setDecimals(i['Decimals'])
+            spin_i.setRange(*i['Range'])
+            spin_i.setSingleStep(i['SingleStep'])
+            # spin_t0.setValue(self.default_voltages[-2])
+            grid1.addWidget(spin_i, *i['Coordinates'])
+            a, b = i['Label']
+            self.electrode_spin[self.ELECTRODES[a][b]] = spin_i
+            # self.electrodes.append(spin_i)
+            label_i = QLabel('       '+self.ELECTRODES[a][b], self)
+            label_i.setAlignment(QtCore.Qt.AlignRight)
+            grid1.addWidget(label_i, *i['LabelCoord'])
+    
 
         # add textbox color
         for el in self.electrode_spin.values():
@@ -766,28 +720,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4.addWidget(label_gap,0,2,1,2)
 
 
-        # PARAMETERS2 = ['Trigger level (V):', '# Repetitions:', '# Datapoints:', '# Bins:', '# Update cycles:']
-        # DEFAULTS2 = self.default_parameter[5:] # default values
-        # for i in range(len(PARAMETERS2)):
-        #     if i == 0:
-        #         spin = QtWidgets.QDoubleSpinBox(self)
-        #         spin.setRange(0,5)
-        #         spin.setSingleStep(0.01)
-        #         spin.setDecimals(4)
-        #         spin.setValue(DEFAULTS2[i]) # set default values
-        #         grid4.addWidget(spin,i+12,5,1,1)
-        #         self.parameter_dict.append(spin)
-        #         label = QLabel('    '+PARAMETERS2[i], self)
-        #         grid4.addWidget(label,i+12,4,1,1)
-        #     else:
-        #         spin = QtWidgets.QSpinBox(self)
-        #         spin.setRange(0,1000000)
-        #         spin.setSingleStep(10)
-        #         spin.setValue(DEFAULTS2[i]) # set default values
-        #         self.parameter_dict.append(spin)
-        #         grid4.addWidget(spin,i+12,5,1,1)
-        #         label = QLabel('    '+PARAMETERS2[i], self)
-        #         grid4.addWidget(label,i+12,4,1,1)        
+        ######## TODO: Modifying Below #######       
     
         #[values (from list), x-coord (label), x-coord (entrtyBox), y-coord (first entry)]
         self.bl_electrodes0 = [0,0,1,4] 
@@ -991,6 +924,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.setLayout(self.layout)        
         return
 
+
+    #TODO: need to initialize different rigol
     def on_run_rigol_extraction_click(self):
         self.dev_list = []
         for m in self.device_parameter_list:
@@ -1008,6 +943,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.rigol113.run()
         # self.rigol117.run()
 
+
     def on_update_dataset_click(self):
         self.update_parameters()
         self.update_multipoles()
@@ -1018,6 +954,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         # self.e.append(self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level"))       
         self.set_dac_voltages()
         # print("on_multipole_click has updated voltages and mutated datasets")
+
 
     def on_voltage_click(self):
         # Create electrode list of floats
@@ -1044,25 +981,31 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.mutate_dataset_electrode()
         self.HasEnvironment.set_individual_electrode_voltages(self.elec_dict)
 
+
     def on_terminate_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.stop",1, broadcast=True, persist=True)
         return
+
 
     def on_pulse_counting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",0, broadcast=True, persist=True)
         self.on_run_click()
 
+
     def on_roi_counting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",1, broadcast=True, persist=True)
         self.on_run_click()
+
 
     def on_hist_counting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",2, broadcast=True, persist=True)
         self.on_run_click()
 
+
     def on_outputting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",3, broadcast=True, persist=True)
         self.on_run_click()
+
 
     def on_run_click(self):
         self.thread = QThread() # create a QThread object
@@ -1098,6 +1041,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             lambda: self.op_button.setEnabled(True)
             )
 
+
     def long_run_task(self):
         self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
         self.on_update_dataset_click()
@@ -1106,6 +1050,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.HasEnvironment.rolling_run()
         return
 
+
+    #FIXME: looks sus but later priority
     def on_store_data_click(self):
 
         dialog = QtWidgets.QDialog()
@@ -1197,6 +1143,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             # writing the data rows 
             csvwriter.writerow(param_data)
 
+
     def on_data_folder_click(self):
         print("data folder clicked")
         self.folder = QFileDialog.getExistingDirectory(self, "Choose Directory", options=QtWidgets.QFileDialog.DontUseNativeDialog)
@@ -1211,11 +1158,13 @@ class MyTabWidget(HasEnvironment,QWidget):
                 default[e] = self.HasEnvironment.get_dataset(key="optimize.e."+e)
         return default
 
+
     def get_default_parameter(self):
         default = {}
         for p in self.controlled_parameters_dict:
             default[p] = self.HasEnvironment.get_dataset(key="optimize.parameter."+p)
         return default
+
 
     def get_default_multipoles(self):
         default = {}
@@ -1225,6 +1174,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         return default
 
 
+    #TODO: Need to change, has difference from 3-layer
     def update_multipoles(self):
         
         # Create multiple list of floats
@@ -1355,6 +1305,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.HasEnvironment.set_dataset("optimize.flag.p",1, broadcast=True, persist=True)
         # print("update_parameters has mutated dataset")
 
+
     def mutate_dataset_parameters(self):
         for p in self.parameter_dict:
             self.HasEnvironment.set_dataset(key="optimize.parameter."+p,value = self.parameter_dict[p], broadcast=True, persist=True)
@@ -1391,6 +1342,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             
         self.C_Matrix_np = np.array(self.C_Matrix)
     
+
     def keyPressEvent(self, qKeyEvent):
         #print(qKeyEvent.key())
         if qKeyEvent.key() == QtCore.Qt.Key_Return:
@@ -1404,8 +1356,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         else:
             super().keyPressEvent(qKeyEvent)
                            
-
-        
 
     def change_background(self, entry):
 
@@ -1453,6 +1403,8 @@ class MyTabWidget(HasEnvironment,QWidget):
                 col = '#{:02x}{:02x}{:02x}{:02x}'.format(int(255*a),int(255*r),0,int(255*b))
                 label.setStyleSheet(f'QWidget {{background-color: {col};}}')
 
+
+
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
@@ -1476,6 +1428,7 @@ class Ui_Dialog(object):
         self.qlabel.setText(text)
         self.qlabel.adjustSize()
         self.string_selected = text
+
 
 # Creating a worker class
 class Worker(QObject):
