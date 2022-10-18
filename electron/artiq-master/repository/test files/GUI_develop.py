@@ -463,9 +463,13 @@ class ElectronBase(HasEnvironment):
 import vxi11
 import matplotlib.pyplot as plt
 
-#TODO: Can be initialized by config dict
+#Changed: Initialized lazily by calling function in config
 class rigol():
-    def __init__(self,ip=113,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=20,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
+    def __init__(self,ip=113, pulse_width_ej=800.E-9, 
+                      pulse_delay_ej=2.E-9, offset_ej=-5,
+                      amplitude_ej=20, phase=270,
+                      period_ej=1000.E-9, sampling_time=2.E-9,
+                      config=None):
         # self.sampling_time = sampling_time # 
         
         # initial phase != 0, voltage 0 ~ -20 V, need to manually adjust and see on the scope or AWG
@@ -476,76 +480,13 @@ class rigol():
         self.phase = phase
         self.period_ej = period_ej
         self.sampling_time = sampling_time
+        self.config = config
         # self.inst = vxi11.Instrument('TCPIP0::192.168.169.113::INSTR')
         self.inst = vxi11.Instrument('TCPIP0::192.168.169.'+str(ip)+'::INSTR')
        
 
     def run(self):
-        inst = self.inst
-        inst.write("OUTPUT2 OFF")
-        inst.write("OUTPUT1 OFF")   
-        # hardcode sampling rate for ejection pulse, since only need the first few hundred ns
-        waveform_ej = np.zeros(int(self.period_ej/self.sampling_time))
-        waveform_ej[:] = -1
-        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = 1
-        ej_str = ",".join(map(str,waveform_ej))
-        
-        # Channel 2
-        inst.write(":OUTPut2:LOAD INFinity")
-        inst.write("SOURCE2:PERIOD {:.9f}".format(self.period_ej))
-        # print(inst.ask("SOURCE2:PERIOD?"))
-        inst.write("SOURCE2:VOLTage:UNIT VPP")
-        inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
-        inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
-        inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
-        # inst.write("SOURCE2:PHASe 20")
-        
-        inst.write("SOURce2:BURSt ON")
-        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
-        # inst.write("SOURce2:BURSt:GATE:POL INVerted")
-
-        inst.write("SOURce2:BURSt:PHASe {:.3f}".format(self.phase))
-
-
-        inst.write("SOURce2:BURSt:MODE TRIGgered")
-        inst.write("SOURce2:BURSt:NCYCles 1")
-        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
-        inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
-        inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
-
-
-        # ###### use channel one to extrac on the bottom two central electrodes
-        waveform_ej = np.zeros(int(self.period_ej/self.sampling_time))
-        waveform_ej[:] = 1
-        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = -1
-        ej_str = ",".join(map(str,waveform_ej))
-        # Channel 1
-        inst.write(":OUTPut1:LOAD INFinity")
-        inst.write("SOURCE1:PERIOD {:.9f}".format(self.period_ej))
-        # print(inst.ask("SOURCE2:PERIOD?"))
-        inst.write("SOURCE1:VOLTage:UNIT VPP")
-        inst.write("SOURCE1:VOLTage {:.3f}".format(self.amplitude_ej))
-        inst.write("SOURCE1:VOLTage:OFFSet {:.3f}".format(-1*self.offset_ej))
-        inst.write("SOURCE1:TRACE:DATA VOLATILE,"+ ej_str)
-        # inst.write("SOURCE2:PHASe 20")
-        
-        inst.write("SOURce1:BURSt ON")
-        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
-        inst.write("SOURce1:BURSt:GATE:POL NORMal")
-
-        # inst.write("SOURce1:BURSt:PHASe {:.3f}".format(self.phase))
-
-
-        inst.write("SOURce1:BURSt:MODE TRIGgered")
-        inst.write("SOURce1:BURSt:NCYCles 1")
-        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
-        inst.write("SOURCe1:BURSt:TRIGger:SOURce EXTernal")
-        inst.write("SOURce1:BURSt:TRIGger:SLOPe POSitive")
-
-
-        inst.write("OUTPUT1 ON")
-        inst.write("OUTPUT2 ON")
-        return
+        return self.config.run(self)
 
 
 # Creating tab widgets
@@ -574,7 +515,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.HasEnvironment.set_dac_voltages()#dac_vs)
 
 
-    #TODO: the tabs should be setup according to configs
+    #Changed: the tabs should be setup according to configs
     def setup_UI(self):
   
         # Initialize tab screen
@@ -649,12 +590,16 @@ class MyTabWidget(HasEnvironment,QWidget):
             spin_i.setSingleStep(i['SingleStep'])
             # spin_t0.setValue(self.default_voltages[-2])
             grid1.addWidget(spin_i, *i['Coordinates'])
-            a, b = i['Label']
+            a, b = [_ for _ in self.config.electrodes].index(i), 0
+            self.config.electrode_sec[i]['Label'] = (a, b)
             self.electrode_spin[self.ELECTRODES[a][b]] = spin_i
             # self.electrodes.append(spin_i)
             label_i = QLabel('       '+self.ELECTRODES[a][b], self)
             label_i.setAlignment(QtCore.Qt.AlignRight)
-            grid1.addWidget(label_i, *i['LabelCoord'])
+            label_coord = i['Coordinates']
+            label_coord[1] -= 1
+            self.config.electrode_sec[i]['LabelCoord'] = label_coord
+            grid1.addWidget(label_i, *label_coord)
     
 
         # add textbox color
@@ -720,21 +665,14 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4.addWidget(label_gap,0,2,1,2)
 
 
-        ######## TODO: Modifying Below #######       
-    
-        #[values (from list), x-coord (label), x-coord (entrtyBox), y-coord (first entry)]
-        self.bl_electrodes0 = [0,0,1,4] 
-        self.br_electrodes0 = [1,4,5,4]
-        self.tl_electrodes0 = [3,0,1,10]
-        self.tr_electrodes0 = [4,4,5,10]
-
+        ######## Question: what is the part below doing #######       
 
         self.electrode_labels = {}     
         # get default electrode voltages
         self.default_voltages = self.get_default_voltages()
 
         #electrode grid
-        for e in [self.tl_electrodes0, self.tr_electrodes0, self.bl_electrodes0, self.br_electrodes0]:            
+        for e in electrode_grids:            
             
             el_values = e[0]
             xcoord_label = e[1]
@@ -756,25 +694,17 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4.addWidget(label_gap,5,1,1,1)
 
 
-        #t0
-        label_t0 = QLabel('       '+self.ELECTRODES[2][0], self)
-        label_t0.setAlignment(QtCore.Qt.AlignRight)
-        grid4.addWidget(label_t0,1,2,1,1)
-        self.label0_t0 = QLabel(str(self.default_voltages["t0"]), self)
-        self.label0_t0.setStyleSheet("border: 1px solid black;")
-        grid4.addWidget(self.label0_t0,1,3,1,1)
-        self.electrode_labels[self.ELECTRODES[2][0]] = label_t0
+        for i in self.config.electrode_sec:
+            a, b = i['Label']
+            label_i = QLabel('       '+self.ELECTRODES[a][b], self)
+            label_i.setAlignment(QtCore.Qt.AlignRight)
+            grid4.addWidget(label_i,*i['Coordinates'])
+            label0_i = QLabel(str(self.default_voltages[self.ELECTRODES[a][b]]), self)
+            label0_i.setStyleSheet("border: 1px solid black;")
+            grid4.addWidget(label0_i,*i['LabelCoord'])
+            self.electrode_labels[self.ELECTRODES[a][b]] = label_i
 
         
-        #b0
-        label_b0 = QLabel('       '+self.ELECTRODES[5][0], self)
-        label_b0.setAlignment(QtCore.Qt.AlignRight)
-        grid4.addWidget(label_b0,7,2,1,1)
-        self.label0_b0 = QLabel(str(self.default_voltages[self.ELECTRODES[5][0]]), self)
-        self.label0_b0.setStyleSheet("border: 1px solid black;")
-        grid4.addWidget(self.label0_b0,7,3,1,1)    
-        self.electrode_labels[self.ELECTRODES[5][0]] = label_b0
-
         #spacing  
         label_gap = QLabel('          ', self)
         grid4.addWidget(label_gap,1,6,1,1)
@@ -783,24 +713,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         label_gap = QLabel('          ', self)
         grid4.addWidget(label_gap,11,6,2,1)
     
-        # #create multipole text entry boxes
-        # MULTIPOLES = ['Grid: (V)','Ex:', 'Ey:', 'Ez:', 'U1:', 'U2:', 'U3:', 'U4:', 'U5:', 'U6:']
-        # self.multipoles = []
-        # self.default_multipoles = self.get_default_multipoles()
-        # for i in range(len(MULTIPOLES)):  
-        #     spin = QtWidgets.QDoubleSpinBox(self)
-        #     spin.setDecimals(4)
-        #     if MULTIPOLES[i] == 'Grid: (V)':
-        #         spin.setRange(-1000,3000)
-        #     else:
-        #         spin.setRange(-10,10)
-        #     spin.setSingleStep(0.01)
-        #     spin.setValue(self.default_multipoles[i])
-        #     grid4.addWidget(spin,i,8,1,1)
-        #     self.multipoles.append(spin)
-        #     label = QLabel(MULTIPOLES[i], self)
-        #     label.setAlignment(QtCore.Qt.AlignRight)
-        #     grid4.addWidget(label,i,7,1,1)
 
 
         #create multipole text entry boxes
@@ -893,18 +805,26 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         self.device_parameter_list = []  
         # rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):']
-        rigol_PARAMETERS = ['Offset width (ns):', 'Pulse delay (ns):','Offset (V)(= -Amplitude/2):',  'Amplitude (V):', 'Phase:','Ejection pulse width (ns):','Sampling time (ns):'] # make it to be less confusing
-        rigol_DEFAULTS = [10, 0, -5, 20, 0,200,2]
+        rigol_PARAMETERS = {'Offset width (ns):': 10, 
+                            'Pulse delay (ns):': 0,
+                            'Offset (V)(= -Amplitude/2):': -5,  
+                            'Amplitude (V):': 20, 
+                            'Phase:': 0,
+                            'Ejection pulse width (ns):': 200,
+                            'Sampling time (ns):': 2
+                            } # make it to be less confusing - adjusted
 
-        for i in range(len(rigol_PARAMETERS)):  
+        index = 0
+        for param in rigol_PARAMETERS:  
             spin = QtWidgets.QSpinBox(self)
             spin.setRange(-1E6,1E9)
             spin.setSingleStep(10)
-            spin.setValue(rigol_DEFAULTS[i]) # set default values
+            spin.setValue(rigol_PARAMETERS[param]) # set default values
             grid5.addWidget(spin,i+11,1,1,1)
             self.device_parameter_list.append(spin)
-            label = QLabel('    '+rigol_PARAMETERS[i], self)
-            grid5.addWidget(label,i+11,0,1,1)
+            label = QLabel('    '+param, self)
+            grid5.addWidget(label,index+11,0,1,1)
+            index += 1
           
         #spacing
         label_gap = QLabel('', self)
@@ -925,7 +845,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         return
 
 
-    #TODO: need to initialize different rigol
+    #Changed: initialize different rigol
     def on_run_rigol_extraction_click(self):
         self.dev_list = []
         for m in self.device_parameter_list:
@@ -938,9 +858,9 @@ class MyTabWidget(HasEnvironment,QWidget):
         phase = self.dev_list[4]
         period_ej = self.dev_list[5]*1e-9
         sampling_time = self.dev_list[6]*1e-9
-        self.rigol113 =  rigol(113,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
+        rigol_ip =  rigol(self.config.rigol_ip,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time, config=self.config)
         # self.rigol117 =  rigol(117,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
-        self.rigol113.run()
+        rigol_ip.run()
         # self.rigol117.run()
 
 
@@ -1174,7 +1094,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         return default
 
 
-    #TODO: Need to change, has difference from 3-layer
+    #Changed: Need to change, has difference from 3-layer
     def update_multipoles(self):
         
         # Create multiple list of floats
@@ -1190,9 +1110,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         if not self.old_c_file:
             df = pd.read_csv(self.c_file_csv,index_col = 0)
-
-
-
             voltages = pd.Series(np.zeros(len(self.controlled_electrodes)-1),index = df.index.values)
             grid_m = {'C': 9.50146627948246e-05,'Ey': -2.933307248293106e-06,'Ez': -4.322228417243746e-06,'Ex': 0.0001595407962410731,'U3': 4.18095666141926e-06,'U4': -8.266299827308109e-05,'U2': -3.381649220001519e-05,'U5': -9.733216995247544e-05,'U1': -0.00021359840980261248}
             V_grid = self.mul_dict["Grid"]
@@ -1210,7 +1127,6 @@ class MyTabWidget(HasEnvironment,QWidget):
                 else:
                     # self.mul_dict[m] = self.mul_dict[m] - grid_m[m]*V_grid
                     voltages += df[m] * self.mul_dict[m]
-
             self.elec_dict = voltages.to_dict()
             self.elec_dict["trigger_level"] = self.parameter_dict["trigger_level"]
             for e in self.elec_dict:
@@ -1261,8 +1177,10 @@ class MyTabWidget(HasEnvironment,QWidget):
                 self.m=np.array([self.mul_list])
                 #print(shape(self.m))
                 # grid_V = 150
-                self.grid_multipole_1V = np.array([5.74825920e-05 ,5.96780638e-06 ,1.26753930e-05,-1.32588496e-04,-9.81277203e-05,2.83539744e-05,1.17764523e-05,4.47353980e-05,1.24182868e-05])
-                grid_multipole = [g*grid_V for g in self.grid_multipole_1V]
+                grid_multipole_nV = np.array(self.config.grid_multipole['values'])
+                grid_multipole_nV = grid_multipole_nV[:len(self.HasEnvironment.controlled_multipoles)-1]
+                V = self.config.grid_multipole['voltage']
+                grid_multipole = [g*grid_V/V for g in grid_multipole_1V]
                 self.m=self.m-grid_multipole
                 self.e=np.matmul(self.m, self.C_Matrix_np)
                 

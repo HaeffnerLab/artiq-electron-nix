@@ -57,25 +57,93 @@ class Electron:
     #[values (from list), x-coord (label), x-coord (entryBox), y-coord (first entry)]
     electrodes = {'bl': [0,0,1,4], 
                   'br': [1,4,5,4],
-                  'b0': [7,3,1,1],
+                  't0': None,
                   'tl': [3,0,1,10], 
                   'tr': [4,4,5,10],
-                  't0': None
+                  'b0': None
                  }
     electrode_sec = {'t0': {'Range': (-10, 10)
                             'SingleStep': 0.1,
                             'Decimals': 4,
                             'Coordinates': [1,3,1,1],
-                            'Label': (2, 0),
-                            'LabelCoord': (1, 2)
                            }, 
                      'b0': {'Range': (-10, 10)
                             'SingleStep': 0.1,
                             'Decimals': 4,
                             'Coordinates': [7,3,1,1],
-                            'Label': (5, 0),
-                            'LabelCoord': (7,2,1,1)
                             }
                     }
+    rigol_ip = 113
+    grid_multipole = {'values': [5.74825920e-05 ,5.96780638e-06 ,1.26753930e-05,-1.32588496e-04,-9.81277203e-05,2.83539744e-05,1.17764523e-05,4.47353980e-05,1.24182868e-05],
+                      'voltage': 1
+                     }
 
-    
+
+    ## Rigol Run Function ##
+    def run(arg):
+        self = arg
+        inst = self.inst
+        inst.write("OUTPUT2 OFF")
+        inst.write("OUTPUT1 OFF")   
+        # hardcode sampling rate for ejection pulse, since only need the first few hundred ns
+        waveform_ej = np.zeros(int(self.period_ej/self.sampling_time))
+        waveform_ej[:] = -1
+        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = 1
+        ej_str = ",".join(map(str,waveform_ej))
+        
+        # Channel 2
+        inst.write(":OUTPut2:LOAD INFinity")
+        inst.write("SOURCE2:PERIOD {:.9f}".format(self.period_ej))
+        # print(inst.ask("SOURCE2:PERIOD?"))
+        inst.write("SOURCE2:VOLTage:UNIT VPP")
+        inst.write("SOURCE2:VOLTage {:.3f}".format(self.amplitude_ej))
+        inst.write("SOURCE2:VOLTage:OFFSet {:.3f}".format(self.offset_ej))
+        inst.write("SOURCE2:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
+        inst.write("SOURce2:BURSt ON")
+        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        # inst.write("SOURce2:BURSt:GATE:POL INVerted")
+
+        inst.write("SOURce2:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        inst.write("SOURce2:BURSt:MODE TRIGgered")
+        inst.write("SOURce2:BURSt:NCYCles 1")
+        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        inst.write("SOURCe2:BURSt:TRIGger:SOURce EXTernal")
+        inst.write("SOURce2:BURSt:TRIGger:SLOPe POSitive")
+
+
+        # ###### use channel one to extrac on the bottom two central electrodes
+        waveform_ej = np.zeros(int(self.period_ej/self.sampling_time))
+        waveform_ej[:] = 1
+        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = -1
+        ej_str = ",".join(map(str,waveform_ej))
+        # Channel 1
+        inst.write(":OUTPut1:LOAD INFinity")
+        inst.write("SOURCE1:PERIOD {:.9f}".format(self.period_ej))
+        # print(inst.ask("SOURCE2:PERIOD?"))
+        inst.write("SOURCE1:VOLTage:UNIT VPP")
+        inst.write("SOURCE1:VOLTage {:.3f}".format(self.amplitude_ej))
+        inst.write("SOURCE1:VOLTage:OFFSet {:.3f}".format(-1*self.offset_ej))
+        inst.write("SOURCE1:TRACE:DATA VOLATILE,"+ ej_str)
+        # inst.write("SOURCE2:PHASe 20")
+        
+        inst.write("SOURce1:BURSt ON")
+        # inst.write("SOURce2:BURSt:INTernal:PERiod {:.9f}".format(period_burst))
+        inst.write("SOURce1:BURSt:GATE:POL NORMal")
+
+        # inst.write("SOURce1:BURSt:PHASe {:.3f}".format(self.phase))
+
+
+        inst.write("SOURce1:BURSt:MODE TRIGgered")
+        inst.write("SOURce1:BURSt:NCYCles 1")
+        # inst.write("SOURce2:BURSt:TDELay {:f}".format(self.delay))
+        inst.write("SOURCe1:BURSt:TRIGger:SOURce EXTernal")
+        inst.write("SOURce1:BURSt:TRIGger:SLOPe POSitive")
+
+
+        inst.write("OUTPUT1 ON")
+        inst.write("OUTPUT2 ON")
+        return
