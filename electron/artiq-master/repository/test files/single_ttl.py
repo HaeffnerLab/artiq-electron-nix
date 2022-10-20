@@ -33,8 +33,6 @@ class single_ttl(EnvExperiment):
     @kernel
     def run(self):
 
-
-        
         self.core.reset()
         self.core.break_realtime()
         # self.ttl11.on()
