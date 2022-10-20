@@ -19,10 +19,10 @@ import pandas as pd
 
 import config
 
-class ElectronBase(HasEnvironment):
+class Electron(HasEnvironment):
     def build(self, config_name='Electron'):
         self.config = getattr(config, config_name)
-        if hasattr(self.config, 'devices')
+        if hasattr(self.config, 'devices'):
             devices_names = self.config.devices
         else:
             print(">>> Devices not configured properly!")
@@ -31,7 +31,7 @@ class ElectronBase(HasEnvironment):
         for device in devices_names:
             self.setattr_device(device)
         
-        if hasattr(self.config, 'arguments')
+        if hasattr(self.config, 'arguments'):
             args = self.config.arguments
         else:
             args = {}
@@ -1100,7 +1100,7 @@ class MyTabWidget(HasEnvironment,QWidget):
                 grid_multipole_nV = np.array(self.config.grid_multipole['values'])
                 grid_multipole_nV = grid_multipole_nV[:len(self.HasEnvironment.controlled_multipoles)-1]
                 V = self.config.grid_multipole['voltage']
-                grid_multipole = [g*grid_V/V for g in grid_multipole_1V]
+                grid_multipole = [g*grid_V/V for g in grid_multipole_nV]
                 self.m=self.m-grid_multipole
                 self.e=np.matmul(self.m, self.C_Matrix_np)
                 
@@ -1296,7 +1296,7 @@ class Worker(QObject):
 
 class Electron_GUI(Electron, EnvExperiment):
     def build(self):
-        Electron.build(self)
+        Electron.build(self, config_name='Electron')
 
     def prepare(self):
         Electron.prepare(self)
@@ -1305,7 +1305,7 @@ class Electron_GUI(Electron, EnvExperiment):
     @kernel
     def run(self):
         # self.launch_GUI()
-        print("Hello World")
+        print("Bye World")
 
 
 
