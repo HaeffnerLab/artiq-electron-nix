@@ -167,16 +167,12 @@ class ElectronBase(HasEnvironment):
         return [t_load,t_wait,t_delay,t_acquisition,number_of_repetitions,number_of_datapoints,pulse_counting_time]
 
 
-    #TODO: exist difference from 3-layer, ?dac_calibration_fit
+    #Changed: exist difference from 3-layer, ?dac_calibration_fit
     def loadDACoffset(self):
         # create list of lines from dataset
-        f = '/home/electron/artiq/electron/zotino_offset.txt'
-        tmp = np.loadtxt(f)
-        offset = np.zeros((tmp.shape[0],tmp.shape[1]+1))
-        for i in range(tmp.shape[0]):
-            a = np.append(tmp[i],tmp[i][-1])
-            offset[i] = a
-        self.offset = offset
+        f = '/home/electron/artiq/electron/zotino_calibration_NEWDACBOX_fits_final.txt'
+        tmp = np.loadtxt(f) # = np.array([y0,slope])
+        self.dac_calibration_fit = tmp 
 
 
     def set_dac_voltages(self):
@@ -224,30 +220,24 @@ class ElectronBase(HasEnvironment):
         return True
     
 
-    #TODO: difference: offset value, related to prev DACOffset diff
+    #Changed: difference: offset value, related to prev DACOffset diff
     @ kernel
     def kernel_load_dac(self):
-        
         self.core.reset()
         self.zotino0.init()
-        self.core.break_realtime() 
-        # for e in self.controlled_electrodes:
-        #     delay(500*us)
-        #     # print(self.pin_matching[e])
-        #     self.zotino0.write_dac(self.pin_matching[e],self.dac_vs[e])
-        #     index = 10+int(np.rint(self.dac_vs[e]))
-        #     self.zotino0.write_offset(self.pin_matching[e],self.offset[self.pin_matching[e]][index])
+        self.core.break_realtime()
         for i in range(len(self.dac_pins)):
             delay(500*us)
-            # print(self.pin_matching[e])
-            self.zotino0.write_dac(self.dac_pins[i],self.dac_pins_voltages[i])
-            index = 10+int(np.rint(self.dac_pins_voltages[i]))
-            self.zotino0.write_offset(self.dac_pins[i],self.offset[self.dac_pins[i]][index])
+            m = self.dac_calibration_fit[1][self.dac_pins[i]]
+            b = self.dac_calibration_fit[0][self.dac_pins[i]]
+            self.zotino0.write_dac(self.dac_pins[i],self.dac_pins_voltages[i]/m)
+            self.zotino0.write_offset(self.dac_pins[i],-b/m)
         for pin in self.gnd:
             delay(500*us)
             self.zotino0.write_dac(pin,0.0)
-            index = 10
-            self.zotino0.write_offset(pin,self.offset[pin][index])
+            m = self.dac_calibration_fit[1][pin]
+            b = self.dac_calibration_fit[0][pin]
+            self.zotino0.write_offset(pin,-b/m)
         self.zotino0.load()
         print("Loaded dac voltages")
 
@@ -277,85 +267,15 @@ class ElectronBase(HasEnvironment):
         print("Loaded dac voltages")
 
 
-    #TODO: need 'subclass' style config
+    #Changed: need 'subclass' style config
     @ kernel
     def kernel_run_outputting(self):
-        self.core.break_realtime()
-        t_load = self.ordered_parameter_list[0]
-        t_wait = self.ordered_parameter_list[1]
-        t_delay = self.ordered_parameter_list[2]
-        t_acquisition = self.ordered_parameter_list[3]
-        number_of_repetitions = self.ordered_parameter_list[4]
-        number_of_datapoints = self.ordered_parameter_list[5]
-        pulse_counting_time = self.ordered_parameter_list[6]
-        
-        # t_load = np.int32(self.parameter_dict["t_load"])
-        # t_wait = np.int32(self.parameter_dict["t_wait"])
-        # t_delay = np.int32(self.parameter_dict["t_delay"])
-        # # t_acquisition = np.int32(self.parameter_dict[3])
-        # # trigger_level = self.parameter_dict[5]
-        # number_of_repetitions = np.int32(self.parameter_dict["number_of_repetitions"])
-        # number_of_datapoints = np.int32(self.parameter_dict["number_of_datapoints"])
+        return self.config.kernel_run_outputting(self)
 
-        if self.load_dac:
-            self.kernel_load_dac()
-            
-        for k in range(self.update_cycle):
-            for j in range(number_of_repetitions):
-                self.core.break_realtime()
-                with sequential:
-                    self.ttl8.on()
-                    delay(t_load*us)
-                    self.ttl8.off()
-                    delay(1500*ns) # get rid of the photo diode fall time
-                    self.ttl9.on()  
-                    delay(t_wait*ns)
-                    with parallel:
-                        self.ttl9.off()
-                        self.ttl10.pulse(2*us)
-                    # delay(1*us)
-                    delay(t_delay*ns)
-
-    #TODO: same as above
+    #Changed: same as above
     @ kernel
     def kernel_run_ROI_counting(self):
-        self.core.break_realtime()
-        t_load = self.ordered_parameter_list[0]
-        t_wait = self.ordered_parameter_list[1]
-        t_delay = self.ordered_parameter_list[2]
-        t_acquisition = self.ordered_parameter_list[3]
-        number_of_repetitions = self.ordered_parameter_list[4]
-        number_of_datapoints = self.ordered_parameter_list[5]
-        pulse_counting_time = self.ordered_parameter_list[6]
-        
-        if self.load_dac:
-            self.kernel_load_dac()
-            
-        for k in range(self.update_cycle):
-            countrate_tot = 0 
-            for j in range(number_of_repetitions):
-                self.core.break_realtime()
-                with sequential:
-                    self.ttl8.on()
-                    delay(t_load*us)
-                    with parallel:
-                        self.ttl8.off()
-                        self.ttl9.on()
-                    delay(t_wait*ns)
-                    with parallel:
-                        self.ttl9.off()
-                        self.ttl10.pulse(2*us)
-                        with sequential:
-                            delay(t_delay*ns)
-                            t_count = self.ttl2.gate_rising(t_acquisition*ns)
-                    count = self.ttl2.count(t_count)
-                    if count > 0:
-                        count = 1
-                    self.count_tot += count
-                    countrate_tot += count
-                    delay(1*us)
-            self.mutate_dataset('optimize.result.count_ROI',self.index*self.update_cycle+k,self.count_tot)
-            self.mutate_dataset('optimize.result.countrate_ROI',self.index*self.update_cycle+k,countrate_tot)
+        return self.config.kernel_run_ROI_counting(self)
 
 
     @ kernel

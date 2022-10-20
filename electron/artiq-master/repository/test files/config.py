@@ -1,3 +1,15 @@
+from artiq.experiment import *
+import numpy as np
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QObject, QThread, pyqtSignal
+from PyQt5.QtWidgets import QMainWindow, QMessageBox, QFileDialog, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QLabel, QComboBox, QGridLayout, QLineEdit, QPlainTextEdit
+import select
+from artiq.experiment import *
+from artiq.coredevice.ad9910 import AD9910, SyncDataEeprom
+from artiq.coredevice.ad53xx import AD53xx
+from artiq.master.databases import DeviceDB
+from artiq.master.worker_db import DeviceManager
+
 class Electron:
     """
     Configuration adapted from the GUI_test Electron object.
@@ -53,6 +65,86 @@ class Electron:
                       update_cycle = 10, # how many datapoints per user_update_check (takes about 500 ms)
                     )
 
+    ## Pulse Sequence ##
+    def kernel_run_outputting(arg):
+        self = arg
+        self.core.break_realtime()
+        t_load = self.ordered_parameter_list[0]
+        t_wait = self.ordered_parameter_list[1]
+        t_delay = self.ordered_parameter_list[2]
+        t_acquisition = self.ordered_parameter_list[3]
+        number_of_repetitions = self.ordered_parameter_list[4]
+        number_of_datapoints = self.ordered_parameter_list[5]
+        pulse_counting_time = self.ordered_parameter_list[6]
+        
+        # t_load = np.int32(self.parameter_dict["t_load"])
+        # t_wait = np.int32(self.parameter_dict["t_wait"])
+        # t_delay = np.int32(self.parameter_dict["t_delay"])
+        # # t_acquisition = np.int32(self.parameter_dict[3])
+        # # trigger_level = self.parameter_dict[5]
+        # number_of_repetitions = np.int32(self.parameter_dict["number_of_repetitions"])
+        # number_of_datapoints = np.int32(self.parameter_dict["number_of_datapoints"])
+
+        if self.load_dac:
+            self.kernel_load_dac()
+            
+        for k in range(self.update_cycle):
+            for j in range(number_of_repetitions):
+                self.core.break_realtime()
+                with sequential:
+                    self.ttl8.on()
+                    delay(t_load*us)
+                    self.ttl8.off()
+                    delay(1500*ns) # get rid of the photo diode fall time
+                    self.ttl9.on()  
+                    delay(t_wait*ns)
+                    with parallel:
+                        self.ttl9.off()
+                        self.ttl10.pulse(2*us)
+                    # delay(1*us)
+                    delay(t_delay*ns)
+    
+    
+    def kernel_run_ROI_counting(arg):
+        self = arg
+        self.core.break_realtime()
+        t_load = self.ordered_parameter_list[0]
+        t_wait = self.ordered_parameter_list[1]
+        t_delay = self.ordered_parameter_list[2]
+        t_acquisition = self.ordered_parameter_list[3]
+        number_of_repetitions = self.ordered_parameter_list[4]
+        number_of_datapoints = self.ordered_parameter_list[5]
+        pulse_counting_time = self.ordered_parameter_list[6]
+        
+        if self.load_dac:
+            self.kernel_load_dac()
+            
+        for k in range(self.update_cycle):
+            countrate_tot = 0 
+            for j in range(number_of_repetitions):
+                self.core.break_realtime()
+                with sequential:
+                    self.ttl8.on()
+                    delay(t_load*us)
+                    with parallel:
+                        self.ttl8.off()
+                        self.ttl9.on()
+                    delay(t_wait*ns)
+                    with parallel:
+                        self.ttl9.off()
+                        self.ttl10.pulse(2*us)
+                        with sequential:
+                            delay(t_delay*ns)
+                            t_count = self.ttl2.gate_rising(t_acquisition*ns)
+                    count = self.ttl2.count(t_count)
+                    if count > 0:
+                        count = 1
+                    self.count_tot += count
+                    countrate_tot += count
+                    delay(1*us)
+            self.mutate_dataset('optimize.result.count_ROI',self.index*self.update_cycle+k,self.count_tot)
+            self.mutate_dataset('optimize.result.countrate_ROI',self.index*self.update_cycle+k,countrate_tot)
+    
     ## GUI Config ##
     #[values (from list), x-coord (label), x-coord (entryBox), y-coord (first entry)]
     electrodes = {'bl': [0,0,1,4], 
@@ -147,3 +239,5 @@ class Electron:
         inst.write("OUTPUT1 ON")
         inst.write("OUTPUT2 ON")
         return
+
+
