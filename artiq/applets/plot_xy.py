@@ -11,6 +11,7 @@ class XYPlot(pyqtgraph.PlotWidget):
     def __init__(self, args):
         pyqtgraph.PlotWidget.__init__(self)
         self.args = args
+        self.steps = 0
 
     def data_changed(self, data, mods, title):
         try:
@@ -38,6 +39,11 @@ class XYPlot(pyqtgraph.PlotWidget):
 
         self.clear()
         self.plot(x, y, pen=None, symbol="x")
+        try:
+            interval = self.args.range
+            self.set_xbound(max(self.steps-interval, 0), max(self.steps, interval))
+        except:
+            pass
         self.setTitle(title)
         if error is not None:
             # See https://github.com/pyqtgraph/pyqtgraph/issues/211
@@ -57,6 +63,10 @@ def main():
     applet.add_dataset("x", "X values", required=False)
     applet.add_dataset("error", "Error bars for each X value", required=False)
     applet.add_dataset("fit", "Fit values for each X value", required=False)
+    try:
+        applet.argparser.add_argument("--range", type=int, default=None)
+    except:
+        pass
     applet.run()
 
 if __name__ == "__main__":

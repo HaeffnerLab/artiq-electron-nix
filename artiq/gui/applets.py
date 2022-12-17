@@ -225,7 +225,12 @@ _templates = [
                        "HIST_BIN_BOUNDARIES_DATASET "
                        "HISTS_COUNTS_DATASET"),
     ("Image", "${artiq_applet}image IMG_DATASET"),
-    
+    ("PMT", "${artiq_applet}plot_pmt --with_866_on pmt_counts "
+             "--with_866_off pmt_counts_866_off "
+             "--diff_counts diff_counts "
+             "--pulsed pulsed "
+             "--clear_pmt_plot "
+             "--title 'PMT'")
 ]
 
 

@@ -1,5 +1,3 @@
-from artiq.experiment import *
-import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QMessageBox, QFileDialog, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QLabel, QComboBox, QGridLayout, QLineEdit, QPlainTextEdit
@@ -14,35 +12,42 @@ import time
 import os
 import sys
 import csv
+import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
 
 import config
+from utils import SafeFunction
+
 
 class Electron(HasEnvironment):
     def build(self, config_name='Electron'):
         self.config = getattr(config, config_name)
+        '''
         if hasattr(self.config, 'devices'):
             devices_names = self.config.devices
         else:
             print(">>> Devices not configured properly!")
             exit(1)
-        
+        '''
+        devices_names = self.config.devices
         for device in devices_names:
             self.setattr_device(device)
-        
+        '''
         if hasattr(self.config, 'arguments'):
             args = self.config.arguments
         else:
             args = {}
             print(">>> WARNING: No arguments is configured!")
-
+        '''
+        args = self.config.arguments
         for arg_name in args:
             self.setattr_argument(arg_name, args[arg_name])
 
 
     def prepare(self):
         # results:
+        '''
         if hasattr(self.config, 'datasets'):
             datasets = self.config.datasets
             for dataset in datasets:
@@ -50,14 +55,39 @@ class Electron(HasEnvironment):
                 self.set_dataset(*args, **kwargs)
         else:
             print(">>> WARNGING: Datasets not configured!")
-
-
+        '''
+        datasets = self.config.datasets
+        for dataset in datasets:
+                args, kwargs = dataset['args'], dataset['kwargs']
+                self.set_dataset(*args, **kwargs)
+        else:
+            print(">>> WARNGING: Datasets not configured!")
+        '''
         if hasattr(self.config, 'parameters'):
             params = self.config.parameters
             for param_name in params:
                 setattr(self, param_name, params[param_name])
+            """
+            for p in self.controlled_parameters:
+                self.set_dataset(key="optimize.parameter."+p,
+                                 value = 0.0,
+                                 broadcast=True, persist=True)
+            for e in self.controlled_electrodes_dict:
+                self.set_dataset("optimize.e."+e,
+                                 value = 0.0,
+                                 broadcast=True, persist=True)
+            for m in self.controlled_multipoles_dict:
+                self.set_dataset("optimize.multipoles."+m, 
+                                 value = 0.0, 
+                                 broadcast=True, persist=True)
+            """
         else:
             print(">>> WARNING: Parameters not configured!")
+        #self.launch_GUI()
+        '''
+        params = self.config.parameters
+        for param_name in params:
+            setattr(self, param_name, params[param_name])
 
     
     def launch_GUI(self):       
@@ -84,6 +114,7 @@ class Electron(HasEnvironment):
         win.setGeometry(self.left, self.top, self.width, self.height)
         self.tab_widget = MyTabWidget(self, win, self.config)
         win.setCentralWidget(self.tab_widget)
+        #self.tab_widget.on_update_dataset_click()
 
 
     def rolling_run(self):
@@ -170,7 +201,7 @@ class Electron(HasEnvironment):
     #Changed: exist difference from 3-layer, ?dac_calibration_fit
     def loadDACoffset(self):
         # create list of lines from dataset
-        f = '/home/electron/artiq/electron/zotino_calibration_NEWDACBOX_fits_final.txt'
+        f = '/home/electron/artiq-nix/electron/zotino_calibration_NEWDACBOX_fits_final.txt'
         tmp = np.loadtxt(f) # = np.array([y0,slope])
         self.dac_calibration_fit = tmp 
 
@@ -350,9 +381,14 @@ class Electron(HasEnvironment):
         return 
 
 
-    #TODO: ttl8 vs 16, difference?
+    #Changed: can be replaced by customized function in config
     @kernel
     def kernel_run_pulse_counting(self):
+        '''
+        if hasattr(self.config, "kernel_run_pulse_counting"):
+            return self.config.kernel_run_pulse_counting(self)
+        '''
+        return self.config.kernel_run_pulse_counting(self)
         self.core.break_realtime()
         t_load = self.ordered_parameter_list[0]
         t_wait = self.ordered_parameter_list[1]
@@ -470,10 +506,10 @@ class MyTabWidget(HasEnvironment,QWidget):
                 ei = n
                 self.electrode_sec.append(ei)
             else:
+                electrode_grids.append(self.config.electrodes[n])
                 for i in range(1,6):
                     ei = n + f'{i}'
                     self.electrode_sec.append(ei)
-                electrode_grids.append(self.config.electrodes[n])
             self.ELECTRODES.append(self.electrode_sec)
         self.electrode_spin = {}
         
@@ -503,7 +539,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         label_gap = QLabel('', self)
         grid1.addWidget(label_gap,5,1,1,1)
         
-        
+
         for name in self.config.electrode_sec:
             spin_i = QtWidgets.QDoubleSpinBox(self)
             i = self.config.electrode_sec[name]
@@ -519,10 +555,10 @@ class MyTabWidget(HasEnvironment,QWidget):
             label_i = QLabel('       '+self.ELECTRODES[a][b], self)
             label_i.setAlignment(QtCore.Qt.AlignRight)
             label_coord = i['Coordinates']
-            label_coord[1] -= 1
-            self.config.electrode_sec[name]['LabelCoord'] = label_coord
+            self.config.electrode_sec[name]['LabelCoord'] = label_coord[0], label_coord[1]-1
             grid1.addWidget(label_i, *label_coord)
-    
+
+          
 
         # add textbox color
         for el in self.electrode_spin.values():
@@ -530,12 +566,12 @@ class MyTabWidget(HasEnvironment,QWidget):
        
         # add voltage button
         v_button = QPushButton('Set Voltage values (only mutate the dataset)', self)
-        v_button.clicked.connect(self.on_voltage_click)
+        v_button.clicked.connect(SafeFunction(self.on_voltage_click))
         grid1.addWidget(v_button, 0, 6, 2, 1)
 
         # add voltage button
         v_button = QPushButton('Load Individual Voltage values', self)
-        v_button.clicked.connect(self.on_load_individual_voltage_click)
+        v_button.clicked.connect(SafeFunction(self.on_load_individual_voltage_click))
         grid1.addWidget(v_button, 1, 6, 2, 1)
 
 
@@ -554,8 +590,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4 = QGridLayout() #make grid layout
         
         self.parameter_spin = {}  
-        #create parameter text entry boxes
-        # self.default = [100,100,600,100,500,0.3,1000,1000,50,10] # default values
         self.default_parameter = self.get_default_parameter() # read data from dataset
         
         # PARAMETERS1 = ['Load time (us):', 'Wait time (ns):', 'Delay time (ns):','Acquisition time(ns):' , 'Pulse counting time (ms):']
@@ -587,7 +621,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         grid4.addWidget(label_gap,0,2,1,2)
 
 
-        ######## Question: what is the part below doing #######       
 
         self.electrode_labels = {}     
         # get default electrode voltages
@@ -615,17 +648,17 @@ class MyTabWidget(HasEnvironment,QWidget):
         label_gap = QLabel('', self)
         grid4.addWidget(label_gap,5,1,1,1)
 
-
+        
         for name in self.config.electrode_sec:
             i = self.config.electrode_sec[name]
             a, b = i['Label']
             label_i = QLabel('       '+self.ELECTRODES[a][b], self)
             label_i.setAlignment(QtCore.Qt.AlignRight)
-            grid4.addWidget(label_i,*i['Coordinates'])
+            grid4.addWidget(label_i,*i['LabelCoord'])
             label0_i = QLabel(str(self.default_voltages[self.ELECTRODES[a][b]]), self)
             label0_i.setStyleSheet("border: 1px solid black;")
-            grid4.addWidget(label0_i,*i['LabelCoord'])
-            self.electrode_labels[self.ELECTRODES[a][b]] = label_i
+            grid4.addWidget(label0_i,*i['Coordinates'])
+            self.electrode_labels[self.ELECTRODES[a][b]] = label0_i
 
         
         #spacing  
@@ -635,8 +668,6 @@ class MyTabWidget(HasEnvironment,QWidget):
         #spacing  
         label_gap = QLabel('          ', self)
         grid4.addWidget(label_gap,11,6,2,1)
-    
-
 
         #create multipole text entry boxes
         self.multipole_spin = {}
@@ -662,60 +693,66 @@ class MyTabWidget(HasEnvironment,QWidget):
         # from left to right, top to bottom : 11,7 -> 16,7, 11,8 -> 16,8
 
         # add update dataset button, this is to update the dataset from the user set values in GUI
+        
         v_button = QPushButton('Update Dataset', self)
-        v_button.clicked.connect(self.on_update_dataset_click)
+        v_button.clicked.connect(SafeFunction(self.on_update_dataset_click))
         grid4.addWidget(v_button, 12, 7)
 
         # add load multipole voltage button, this is to update the dataset and load the voltages
         self.lm_button = QPushButton('Load Multipole Voltages', self)
-        self.lm_button.clicked.connect(self.on_load_multipole_voltages_click)
+        self.lm_button.clicked.connect(SafeFunction(self.on_load_multipole_voltages_click))
         grid4.addWidget(self.lm_button, 13, 7)
 
         # add c-file button, this is to load c file
         c_button = QPushButton('Load C-file', self)
-        c_button.clicked.connect(self.openFileDialog)
+        c_button.clicked.connect(SafeFunction(self.openFileDialog))
         grid4.addWidget(c_button, 14, 7)
 
         # add data folder button, this is to select where to save the data
         f_button = QPushButton('Data Folder', self)
-        f_button.clicked.connect(self.on_data_folder_click)
+        f_button.clicked.connect(SafeFunction(self.on_data_folder_click))
         grid4.addWidget(f_button, 15,7)
 
         # add store data button, this is to store the chosen dataset into a csv file
         d_button = QPushButton('Store Data', self)
-        d_button.clicked.connect(self.on_store_data_click)
+        d_button.clicked.connect(SafeFunction(self.on_store_data_click))
         grid4.addWidget(d_button, 16, 7)
 
         # add make hist button, this is to populate the histogram dataset based on bin times dataset for plotting histogram in applet
         hist_button = QPushButton('Make histogram', self)
-        hist_button.clicked.connect(self.HasEnvironment.make_hist)
+        hist_button.clicked.connect(SafeFunction(self.HasEnvironment.make_hist))
         grid4.addWidget(hist_button, 11, 8)
 
         # add pulse counting button, this is to set run_mode = 0 and run the kernel pulse counting
         self.pc_button = QPushButton('Run Pulse Counting', self)
-        self.pc_button.clicked.connect(self.on_pulse_counting_click)
+        self.pc_button.clicked.connect(SafeFunction(self.on_pulse_counting_click))
         grid4.addWidget(self.pc_button, 12, 8)
 
 
         # add ROI counting button, this is to set run_mode = 1 and run the kernel ROI counting
         self.rc_button = QPushButton('Run ROI Counting', self)
-        self.rc_button.clicked.connect(self.on_roi_counting_click)
+        self.rc_button.clicked.connect(SafeFunction(self.on_roi_counting_click))
         grid4.addWidget(self.rc_button, 13, 8)
 
         # add hist counting button, this is to set run_mode = 2 and run the kernel histogram counting
         self.hc_button = QPushButton('Run Hist Counting', self)
-        self.hc_button.clicked.connect(self.on_hist_counting_click)
+        self.hc_button.clicked.connect(SafeFunction(self.on_hist_counting_click))
         grid4.addWidget(self.hc_button, 14, 8)
 
         # add hist counting button, this is to set run_mode = 2 and run the kernel histogram counting
         self.op_button = QPushButton('Run Outputting', self)
-        self.op_button.clicked.connect(self.on_outputting_click)
+        self.op_button.clicked.connect(SafeFunction(self.on_outputting_click))
         grid4.addWidget(self.op_button, 15, 8)
+
+        # add lifetime measurement button, this is to set run_mode = 4 and run the kernel histogram counting
+        self.op_button = QPushButton('Lifetime Measurement', self)
+        self.op_button.clicked.connect(SafeFunction(self.on_lifetime_measurement_click))
+        grid4.addWidget(self.op_button, 16, 8)
 
         # add stop button, this is to terminate the current run program on the kernel and reset the dataset
         t_button = QPushButton('Terminate', self)
-        t_button.clicked.connect(self.on_terminate_click)
-        grid4.addWidget(t_button, 16, 8)
+        t_button.clicked.connect(SafeFunction(self.on_terminate_click))
+        grid4.addWidget(t_button, 16+1, 8)
 
         grid4.setRowStretch(4, 1)
         self.tab4.setLayout(grid4)
@@ -728,34 +765,26 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         self.device_parameter_list = []  
         # rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):']
-        rigol_PARAMETERS = {'Offset width (ns):': 10, 
-                            'Pulse delay (ns):': 0,
-                            'Offset (V)(= -Amplitude/2):': -5,  
-                            'Amplitude (V):': 20, 
-                            'Phase:': 0,
-                            'Ejection pulse width (ns):': 200,
-                            'Sampling time (ns):': 2
-                            } # make it to be less confusing - adjusted
+        rigol_PARAMETERS = ['Offset width (ns):', 'Pulse delay (ns):','Offset (V)(= -Amplitude/2):',  'Amplitude (V):', 'Phase:','Ejection pulse width (ns):','Sampling time (ns):'] # make it to be less confusing
+        rigol_DEFAULTS = [10, 0, -5, 20, 0,200,2]
 
-        index = 0
-        for param in rigol_PARAMETERS:  
+        for i in range(len(rigol_PARAMETERS)):  
             spin = QtWidgets.QSpinBox(self)
-            spin.setRange(-1E6,1E9)
+            spin.setRange(-int(1E6),int(1E9))
             spin.setSingleStep(10)
-            spin.setValue(rigol_PARAMETERS[param]) # set default values
+            spin.setValue(rigol_DEFAULTS[i]) # set default values
             grid5.addWidget(spin,i+11,1,1,1)
             self.device_parameter_list.append(spin)
-            label = QLabel('    '+param, self)
-            grid5.addWidget(label,index+11,0,1,1)
-            index += 1
-          
+            label = QLabel('    '+rigol_PARAMETERS[i], self)
+            grid5.addWidget(label,i+11,0,1,1)
+        
         #spacing
         label_gap = QLabel('', self)
         grid5.addWidget(label_gap,0,2,1,2)
         
         # add extraction button
         v_button = QPushButton('Run Rigol Extraction', self)
-        v_button.clicked.connect(self.on_run_rigol_extraction_click)
+        v_button.clicked.connect(SafeFunction(self.on_run_rigol_extraction_click))
         grid5.addWidget(v_button, 8+2, 8)
 
         grid5.setRowStretch(4, 1)
@@ -766,6 +795,8 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)        
         return
+
+    
 
 
     #Changed: initialize different rigol
@@ -786,16 +817,20 @@ class MyTabWidget(HasEnvironment,QWidget):
         rigol_ip.run()
         # self.rigol117.run()
 
+    def on_lifetime_measurement_click(self):
+        self.HasEnvironment.set_dataset("optimize.flag.run_mode",4, broadcast=True, persist=True)
+        SafeFunction(self.on_run_click)()
+
 
     def on_update_dataset_click(self):
-        self.update_parameters()
-        self.update_multipoles()
+        SafeFunction(self.update_parameters)()
+        SafeFunction(self.update_multipoles)()
         
 
     def on_load_multipole_voltages_click(self):
-        self.on_update_dataset_click()
+        SafeFunction(self.on_update_dataset_click)()
         # self.e.append(self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level"))       
-        self.set_dac_voltages()
+        SafeFunction(self.set_dac_voltages)()
         # print("on_multipole_click has updated voltages and mutated datasets")
 
 
@@ -837,58 +872,61 @@ class MyTabWidget(HasEnvironment,QWidget):
 
     def on_roi_counting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",1, broadcast=True, persist=True)
-        self.on_run_click()
+        SafeFunction(self.on_run_click)()
 
 
     def on_hist_counting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",2, broadcast=True, persist=True)
-        self.on_run_click()
+        SafeFunction(self.on_run_click)()
 
 
     def on_outputting_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",3, broadcast=True, persist=True)
-        self.on_run_click()
+        SafeFunction(self.on_run_click)()
 
 
     def on_run_click(self):
-        self.thread = QThread() # create a QThread object
-        self.worker = Worker(self.long_run_task) # create a worker object
-        self.worker.moveToThread(self.thread) # move worker to the thread
-        # connect signals and slots
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        # self.worker.progress.connect(self.reportProgress)
-        self.thread.start() # start the thread
-        # final resets
-        self.lm_button.setEnabled(False)
-        self.rc_button.setEnabled(False)
-        self.hc_button.setEnabled(False)
-        self.op_button.setEnabled(False)
-        self.pc_button.setEnabled(False)
+        def run(self):
+            self.thread = QThread() # create a QThread object
+            self.worker = Worker(self.long_run_task) # create a worker object
+            self.worker.moveToThread(self.thread) # move worker to the thread
+            # connect signals and slots
+            self.thread.started.connect(self.worker.run)
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.thread.finished.connect(self.thread.deleteLater)
+            # self.worker.progress.connect(self.reportProgress)
+            self.thread.start() # start the thread
+            # final resets
+            self.lm_button.setEnabled(False)
+            self.rc_button.setEnabled(False)
+            self.hc_button.setEnabled(False)
+            self.op_button.setEnabled(False)
+            self.pc_button.setEnabled(False)
 
-        self.thread.finished.connect(
-            lambda: self.lm_button.setEnabled(True)
-            )
-        self.thread.finished.connect(
-            lambda: self.rc_button.setEnabled(True)
-            )
-        self.thread.finished.connect(
-            lambda: self.hc_button.setEnabled(True)
-            )
-        self.thread.finished.connect(
-            lambda: self.pc_button.setEnabled(True)
-            )
-        self.thread.finished.connect(
-            lambda: self.op_button.setEnabled(True)
-            )
+            self.thread.finished.connect(
+                lambda: self.lm_button.setEnabled(True)
+                )
+            self.thread.finished.connect(
+                lambda: self.rc_button.setEnabled(True)
+                )
+            self.thread.finished.connect(
+                lambda: self.hc_button.setEnabled(True)
+                )
+            self.thread.finished.connect(
+                lambda: self.pc_button.setEnabled(True)
+                )
+            self.thread.finished.connect(
+                lambda: self.op_button.setEnabled(True)
+                )
+        return SafeFunction(run)(self)
+
 
 
     def long_run_task(self):
         self.HasEnvironment.set_dataset("optimize.flag.stop",0, broadcast=True, persist=True)
-        self.on_update_dataset_click()
-        self.on_run_rigol_extraction_click()
+        SafeFunction(self.on_update_dataset_click)()
+        SafeFunction(self.on_run_rigol_extraction_click)()
         self.HasEnvironment.core.reset()
         self.HasEnvironment.rolling_run()
         return
@@ -934,6 +972,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         
         # folder to store all data
         try:
+            os.makedirs(self.folder, exist_ok=True)
             data_folder = self.folder
         except:    
             data_folder = "/home/electron/artiq/electron/artiq-master/data" #default path if none is selected 
@@ -1066,19 +1105,22 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         else:
             self.mul_list = []
-            for m in ["Ex","Ey","Ez","U1","U2","U3","U4","U5","U6"]:
+            for m in self.config.parameters['controlled_multipoles'][1:]:
                 self.mul_list.append(self.mul_dict[m])
             
             # Calculate and print electrode values
             try:
                 
                 self.m=np.array([self.mul_list])
-                self.grid_multipole_1V = np.array([5.74825920e-05 ,5.96780638e-06 ,1.26753930e-05,-1.32588496e-04,-9.81277203e-05,2.83539744e-05,1.17764523e-05,4.47353980e-05,1.24182868e-05])
-                grid_multipole = [g*grid_V for g in self.grid_multipole_1V]
+                grid_multipole_nV = np.array(self.config.grid_multipole['values'])
+                grid_multipole_nV = grid_multipole_nV[:len(self.HasEnvironment.controlled_multipoles)-1]
+                V = self.config.grid_multipole['voltage']
+                grid_multipole = [g*grid_V/V for g in grid_multipole_nV]
                 self.m=self.m-grid_multipole
+                self.C_Matrix_np = np.array(self.C_Matrix)
                 self.e=np.matmul(self.m, self.C_Matrix_np)
             except:
-                f = open('/home/electron/artiq/electron/Cfile_electron_gen2_v-1.txt','r')
+                f = open(self.config.grid_multipole['filename'],'r')
                 # create list of lines from selected textfile
                 self.list_of_lists = []
                 for line in f:
@@ -1089,7 +1131,7 @@ class MyTabWidget(HasEnvironment,QWidget):
                 # create list of values from size 21*9 C-file
                 curr_elt = 0
                 self.C_Matrix = []
-                for i in range(9):
+                for i in range(len(self.HasEnvironment.controlled_multipoles)-1):
                     C_row = []
                     for i in range(self.ne-1): #-1 because of the channel 0 for trigger level
                         C_row.append(self.list_of_lists[curr_elt])
@@ -1122,9 +1164,19 @@ class MyTabWidget(HasEnvironment,QWidget):
 
             
             #self.e is in alphabetical order as in c file: [ bl1,...,bl5,br1,...,br5, b0(grid), t0,tl1,...,tl5,tr1,..,tr5]
-            self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br4':self.e[8],'br5':self.e[9],'b0':0.0,'t0':self.e[11],'tl1':self.e[12],'tl2':self.e[13],'tl3':self.e[14],'tl4':self.e[15],'tl5':self.e[16],'tr1':self.e[17],'tr2':self.e[18],'tr3':self.e[19],'tr4':self.e[20],'tr5':self.e[21]}
+            #self.elec_dict={'bl1':self.e[0],'bl2':self.e[1],'bl3':self.e[2],'bl4':self.e[3],'bl5':self.e[4],'br1':self.e[5],'br2':self.e[6],'br3':self.e[7],'br4':self.e[8],'br5':self.e[9],'b0':0.0,'t0':self.e[11],'tl1':self.e[12],'tl2':self.e[13],'tl3':self.e[14],'tl4':self.e[15],'tl5':self.e[16],'tr1':self.e[17],'tr2':self.e[18],'tr3':self.e[19],'tr4':self.e[20],'tr5':self.e[21]}
+            self.elec_dict = {}
             # print(self.elec_dict)
-
+            k = 0
+            for i in self.config.electrodes:
+                if self.config.electrodes[i] != None:
+                    for j in range(1, 6):
+                        self.elec_dict[f'{i}{j}'] = self.e[k]
+                        k += 1
+                else:
+                    self.elec_dict[i] = self.e[k]
+                    k += 1
+            #SafeFunction.error_message(self.elec_dict)
             for e in self.electrode_labels:
                 self.electrode_labels[e].setText(str(round(self.elec_dict[e],3)))      
             self.mutate_dataset_electrode()
@@ -1189,11 +1241,11 @@ class MyTabWidget(HasEnvironment,QWidget):
         if qKeyEvent.key() == QtCore.Qt.Key_Return:
             
             if self.tabs.currentIndex() == 0:
-                self.on_update_dataset_click()
+                SafeFunction(self.on_update_dataset_click)()
             elif self.tabs.currentIndex() == 1:
-                self.on_voltage_click()
+                SafeFunction(self.on_voltage_click)()
             elif self.tabs.currentIndex() == 2:
-                self.on_run_rigol_extraction_click()
+                SafeFunction(self.on_run_rigol_extraction_click)()
         else:
             super().keyPressEvent(qKeyEvent)
                            
@@ -1246,6 +1298,8 @@ class MyTabWidget(HasEnvironment,QWidget):
 
 
 
+
+
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
@@ -1263,7 +1317,7 @@ class Ui_Dialog(object):
 
         self.qlabel = QLabel()
         self.qlabel.move(50,16)
-        self.combo.activated[str].connect(self.onChanged)      
+        self.combo.activated[str].connect(SafeFunction(self.onChanged))      
 
     def onChanged(self, text):
         self.qlabel.setText(text)
@@ -1297,17 +1351,17 @@ class Worker(QObject):
         self.finished.emit()
 
 
-class Electron_GUI_Develop(Electron, EnvExperiment):
-    def build(self):
-        Electron.build(self, config_name='Electron')
+class Electron_GUI_Base(Electron, EnvExperiment):
+    def build(self, config_name='Electron'):
+        Electron.build(self, config_name=config_name)
 
     def prepare(self):
         Electron.prepare(self)
-        self.launch_GUI() # if I put it in run function, this will keep getting underflow errors?
+        #self.launch_GUI() # if I put it in run function, this will keep getting underflow errors?
     
     @kernel
     def run(self):
-        # self.launch_GUI()
+        #self.launch_GUI()
         print("Bye World")
 
 

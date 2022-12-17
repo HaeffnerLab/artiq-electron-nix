@@ -12,11 +12,11 @@ print("applet running")
 class XYELECTRON(pyqtgraph.PlotWidget):
     def __init__(self, args):
         pyqtgraph.PlotWidget.__init__(self)
-        self.args = args
+        #self.args = args
 
     def data_changed(self, data, mods, title):
         try:
-            y = data[self.args.y][1]
+            y = np.arange(0,10,0.1) #data[self.args.y][1]
         except KeyError:
             return
         x = data.get(self.args.x, (False, None))[1]
