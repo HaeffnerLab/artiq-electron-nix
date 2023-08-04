@@ -23,14 +23,16 @@ class zotino_calibrator(EnvExperiment):
     def prepare(self):
         # self.Vs = np.arange(-10,10,1)
         # self.Vs = [-10.0,-9.0,-8.0,-7.0,-6.0,-5.0,-4.0,-3.0,-2.0,-1.0,0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,9.9]
-        self.Vs = [-6.5,-6.0,-5.5,-5.0,-4.5,-4.0,-3.5,-3.0,-2.5,-2.0,-1.5,-1.0,-0.5,0.0,0.5,1.0, 1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0,5.5,6.0,6.5]
+        # self.Vs = [-6.5,-6.0,-5.5,-5.0,-4.5,-4.0,-3.5,-3.0,-2.5,-2.0,-1.5,-1.0,-0.5,0.0,0.5,1.0, 1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0,5.5,6.0,6.5]
+        self.Vs = [-1.50000000e+00, -1.40000000e+00, -1.30000000e+00, -1.20000000e+00,-1.10000000e+00, -1.00000000e+00, -9.00000000e-01, -8.00000000e-01,-7.00000000e-01, -6.00000000e-01, -5.00000000e-01, -4.00000000e-01,-3.00000000e-01, -2.00000000e-01, -1.00000000e-01,  1.33226763e-15,1.00000000e-01,  2.00000000e-01,  3.00000000e-01,  4.00000000e-01,5.00000000e-01,  6.00000000e-01,  7.00000000e-01,  8.00000000e-01,9.00000000e-01,  1.00000000e+00,  1.10000000e+00,  1.20000000e+00,1.30000000e+00,  1.40000000e+00,  1.50000000e+00]
         # self.Vs = [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2] 
     def run(self):
-        self.loadDACoffset()
+        # self.loadDACoffset()
         if self.voltage_scan:
             self.run_scan()
         else:
             self.run_once()
+
 
     @kernel
     def run_once(self):
@@ -44,6 +46,7 @@ class zotino_calibrator(EnvExperiment):
             #index = 10+int(np.rint(self.voltage))
             #self.zotino0.write_offset(pin,self.offset[pin][index])    
         self.zotino0.load()
+        print("done")
         # self.zotino0.write_offset_dacs_mu()
 
     @kernel
@@ -63,6 +66,7 @@ class zotino_calibrator(EnvExperiment):
                     self.ttl16.pulse(20*us)
                     delay(10*us)
             delay(4*s)
+        print("done")
             # self.zotino0.write_offset_dacs_mu()
 
     def loadDACoffset(self):

@@ -38,6 +38,7 @@ class demo(EnvExperiment):
 
 
         x = self.ttl0.count(self.ttl0.gate_rising(1*us))
+        print("Hello World122")
         # self.ttl11.output()
         # self.ttl12.output()
         # self.d0.cpld.init()

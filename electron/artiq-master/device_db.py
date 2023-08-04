@@ -58,7 +58,7 @@ device_db["ttl1"] = {
 }
 
 
-device_db["ttl2"] = {
+device_db["ttl_MCP_in"] = {
     "type": "local",
     "module": "artiq.coredevice.ttl",
     "class": "TTLInOut",
@@ -122,7 +122,7 @@ device_db["ttl9"] = {
 }
 
 
-device_db["ttl10"] = {
+device_db["ttl_Extraction"] = {
     "type": "local",
     "module": "artiq.coredevice.ttl",
     "class": "TTLOut",
@@ -130,7 +130,7 @@ device_db["ttl10"] = {
 }
 
 
-device_db["ttl11"] = {
+device_db["ttl_TimeTagger"] = {
     "type": "local",
     "module": "artiq.coredevice.ttl",
     "class": "TTLOut",
@@ -170,7 +170,7 @@ device_db["ttl15"] = {
 }
 
 
-device_db["ttl16"] = {
+device_db["ttl_390"] = {
     "type": "local",
     "module": "artiq.coredevice.ttl",
     "class": "TTLOut",

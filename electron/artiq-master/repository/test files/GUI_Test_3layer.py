@@ -17,6 +17,8 @@ import csv
 from matplotlib import pyplot as plt
 import pandas as pd
 from scipy.optimize import curve_fit
+import vxi11
+import matplotlib.pyplot as plt
 
 
 class Electron(HasEnvironment):
@@ -77,8 +79,14 @@ class Electron(HasEnvironment):
         # self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(100000), broadcast=True, persist=True) # number of datapoints
         # self.set_dataset(key="optimize.parameter.bins", value = np.int(50), broadcast=True, persist=True) # number of bins in the histogram
         # self.set_dataset(key="optimize.parameter.update_cycle", value = np.int(10), broadcast=True, persist=True) # number of datapoints per update cycle
+        # self.set_dataset(key="optimize.parameter.start_freq", value = np.int(10), broadcast=True, persist=True) # start_freq of R&S
+        # self.set_dataset(key="optimize.parameter.end_freq", value = np.int(300), broadcast=True, persist=True) # end_freq of R&S
+        # self.set_dataset(key="optimize.parameter.RF_amplitude", value = np.int(-20), broadcast=True, persist=True) # amplitude of R&S
+        # self.set_dataset(key="optimize.parameter.freq_step", value = np.int(0.1), broadcast=True, persist=True) # freq step of R&S
 
         self.wait_times = np.logspace(0,int(np.log10(self.max_lifetime)),20)
+        self.freq = np.array(range(1,500,1))
+
         # self.wait_times = [ 1.000,2.154,4.641,10.000,21.544,46.415,100.000,215.443,464.158,1000.000,10000.0]
         # self.wait_times = [1.00000000e+00, 1.83298071e+00, 3.35981829e+00, 6.15848211e+00,1.12883789e+01, 2.06913808e+01, 3.79269019e+01, 6.95192796e+01,1.27427499e+02, 2.33572147e+02, 4.28133240e+02, 7.84759970e+02,1.43844989e+03, 2.63665090e+03, 4.83293024e+03, 8.85866790e+03,1.62377674e+04, 2.97635144e+04, 5.45559478e+04, 1.00000000e+05]
         # results:
@@ -93,6 +101,9 @@ class Electron(HasEnvironment):
         self.set_dataset('optimize.result.lifetime.counts',[-50]*len(self.wait_times),broadcast=True)
         self.set_dataset('optimize.result.lifetime.wait_times',[-50]*len(self.wait_times),broadcast=True)
         self.set_dataset('optimize.result.lifetime.lifetime_fit',value=np.float32(0),broadcast=True)
+        self.set_dataset('optimize.result.frequency_count_ROI',[-2]*self.freq,broadcast=True)
+        self.set_dataset('optimize.result.frequency_ROI',[-2]*self.freq,broadcast=True)
+        
 
         # # electrodes: [bl1,...,bl5,br1,...,br5 (except br4),tl1,...,tl5,tr1,...,tr5 (except tr4),btr4,t0,b0], notice br4 and tr4 are shorted together, channel 3
         # self.pins = [13,15,17,19,21,23,7,5,1,24,2,26,28,30,9,20,18,14,16, 4,11] # Unused dac channels: 0 (bad),3 (original br4), 6,8,10,12,22 (bad) ,25,27,29,31
@@ -118,12 +129,12 @@ class Electron(HasEnvironment):
         self.controlled_electrodes = ["tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr4","tr5","tg","br1","br2","br3","br4","br5","bl1","bl2","bl3","bl4","bl5","trigger_level"]
         self.controlled_multipoles = ["Grid","Ex","Ey","Ez","U1","U2","U3","U4","U5"]
 
-        self.controlled_parameters = ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints","bins","update_cycle"]
+        self.controlled_parameters = ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints","bins","update_cycle","start_freq","end_freq","RF_amplitude","freq_step"]
         self.old_c_file = True
         self.c_file_csv = '/home/electron/artiq/electron/cfile_etrap_gen2_6electrodes_U1U5_uncontrol.csv'
         # self.c_file_csv = '/home/electron/artiq/electron/cfile_etrap_gen2_6electrodes_with_Grid_U1U5_uncontrol.csv'
         self.controlled_multipoles_dict = {"Grid":'Grid: (V)',"Ex":'Ex:', "Ey":'Ey:', "Ez":'Ez:', "U1":'U1:', "U2":'U2:', "U3":'U3:', "U4":'U4:', "U5":'U5:',"U6":'U6:'}
-        self.controlled_parameters_dict = {"t_load":'Load time (us):', "t_wait":'Wait time (us):', "t_delay":'Delay time (ns):',"t_acquisition":'Acquisition time(ns):' , "pulse_counting_time":'Pulse counting time (ms):',"trigger_level":'Trigger level (V):',"number_of_repetitions":'# Repetitions:', "number_of_datapoints":'# Datapoints:', "bins":'# Bins:',"update_cycle":'# Update cycles:'}
+        self.controlled_parameters_dict = {"t_load":'Load time (us):', "t_wait":'Wait time (us):', "t_delay":'Delay time (ns):',"t_acquisition":'Acquisition time(ns):' , "pulse_counting_time":'Pulse counting time (ms):',"trigger_level":'Trigger level (V):',"number_of_repetitions":'# Repetitions:', "number_of_datapoints":'# Datapoints:', "bins":'# Bins:',"update_cycle":'# Update cycles:',"start_freq":'Start Frequency (MHz):',"end_freq":'End Freq (MHz):',"RF_amplitude":'RF amplitude of R&S',"freq_step":'freq stepSize (MHz):'}
         self.controlled_electrodes_dict = ["tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr4","tr5","tg","br1","br2","br3","br4","br5","bl1","bl2","bl3","bl4","bl5","trigger_level"]
         self.ne = int(len(self.controlled_electrodes)) # number of electrodes
         
@@ -181,6 +192,9 @@ class Electron(HasEnvironment):
                 self.kernel_run_outputting()
             elif self.run_mode == 5:
                 self.kernel_run_ROI_lifetime_optimize()
+            elif self.run_mode == 6:
+                self.rs = RS()
+                self.kernel_run_ROI_counting_with_trap_freq()
             
 
     def get_run_mode(self):
@@ -221,6 +235,11 @@ class Electron(HasEnvironment):
         number_of_repetitions_index = self.parameter_name_list.index("number_of_repetitions")
         number_of_datapoints_index = self.parameter_name_list.index("number_of_datapoints")
         pulse_counting_time_index = self.parameter_name_list.index("pulse_counting_time")
+        start_freq_index = self.parameter_name_list.index("start_freq")
+        end_freq_index = self.parameter_name_list.index("end_freq")
+        RF_amplitude_index = self.parameter_name_list.index("RF_amplitude")
+        freq_step_index = self.parameter_name_list.index("freq_step")
+        
 
         t_load = np.int32(self.parameter_value_list[t_load_index])
         t_wait = np.int32(self.parameter_value_list[t_wait_index])
@@ -229,9 +248,14 @@ class Electron(HasEnvironment):
         number_of_repetitions = np.int32(self.parameter_value_list[number_of_repetitions_index])
         number_of_datapoints = np.int32(self.parameter_value_list[number_of_datapoints_index])
         pulse_counting_time = np.int32(self.parameter_value_list[pulse_counting_time_index])
-        self.ordered_parameter_list = [t_load,t_wait,t_delay,t_acquisition,number_of_repetitions,number_of_datapoints,pulse_counting_time]
+        start_freq = np.int32(self.parameter_value_list[start_freq_index]*1E6)
+        end_freq = np.int32(self.parameter_value_list[end_freq_index]*1E6)
+        RF_amplitude = np.int32(self.parameter_value_list[RF_amplitude_index])
+        freq_step = np.int32(self.parameter_value_list[freq_step_index]*1E6)
 
-        return [t_load,t_wait,t_delay,t_acquisition,number_of_repetitions,number_of_datapoints,pulse_counting_time]
+        self.ordered_parameter_list = [t_load,t_wait,t_delay,t_acquisition,number_of_repetitions,number_of_datapoints,pulse_counting_time,start_freq,end_freq,RF_amplitude,freq_step]
+
+        return [t_load,t_wait,t_delay,t_acquisition,number_of_repetitions,number_of_datapoints,pulse_counting_time,start_freq,end_freq,RF_amplitude,freq_step]
 
     # def loadDACoffset(self):
     #     # create list of lines from dataset
@@ -421,7 +445,74 @@ class Electron(HasEnvironment):
             self.mutate_dataset('optimize.result.count_ROI',self.index*self.update_cycle+k,self.count_tot)
             self.mutate_dataset('optimize.result.countrate_ROI',self.index*self.update_cycle+k,countrate_tot)
 
+    @ kernel
+    def kernel_run_ROI_counting_with_trap_freq(self):
+        self.core.break_realtime()
+        t_load = self.ordered_parameter_list[0]
+        t_wait = self.ordered_parameter_list[1]
+        t_delay = self.ordered_parameter_list[2]
+        t_acquisition = self.ordered_parameter_list[3]
+        number_of_repetitions = self.ordered_parameter_list[4]
+        number_of_datapoints = self.ordered_parameter_list[5]
+        pulse_counting_time = self.ordered_parameter_list[6]
+        start_freq=self.ordered_parameter_list[7]
+        stop_freq=self.ordered_parameter_list[8]
+        RF_amplitude=self.ordered_parameter_list[9]
+        freq_step=self.ordered_parameter_list[10]
 
+        #start_freq=np.int32(1E6)
+        #stop_freq=np.int32(300E6)  
+        #RF_amplitude=np.int32(-20)
+        #freq_step=np.int32(0.1E6)
+        frequencies = np.array(range(start_freq, stop_freq, freq_step))
+        print(len(frequencies))
+
+
+        if self.load_dac:
+            self.kernel_load_dac()
+
+
+        for k in range(self.update_cycle):
+            countrate_tot = 0 
+            
+
+
+            for i in range(len(frequencies)):
+                
+                self.rs.run(frequencies[i],RF_amplitude)
+                countrate_tot = 0
+
+                for j in range(number_of_repetitions):
+                    self.core.break_realtime()
+                    with sequential:
+                        self.ttl16.on()
+                        delay(t_load*us)
+                        with parallel:
+                            self.ttl16.off()
+                            self.ttl9.on()
+                        delay(t_wait*us)
+                        with parallel:
+                            self.ttl9.off()
+                            self.ttl10.pulse(2*us)
+                            self.ttl11.pulse(2*us)
+                            with sequential:
+                                delay(200*ns)
+                                self.ttl12.pulse(2*us)
+                            with sequential:
+                                delay(t_delay*ns)
+                                t_count = self.ttl2.gate_rising(t_acquisition*ns)
+                        count = self.ttl2.count(t_count)
+                        if count > 0:
+                            count = 1
+                        self.count_tot += count
+                        countrate_tot += count
+                        delay(10*us)
+                self.mutate_dataset('optimize.result.count_ROI',self.index*self.update_cycle+k+i,self.count_tot)
+                self.mutate_dataset('optimize.result.countrate_ROI',self.index*self.update_cycle+k+i,countrate_tot)
+                self.mutate_dataset('optimize.result.frequency_count_ROI',self.index*self.update_cycle+k+i,countrate_tot)
+                self.mutate_dataset('optimize.result.frequency_ROI',self.index*self.update_cycle+k+i,frequencies[i])
+            
+        
     @ kernel
     def kernel_run_ROI_lifetime_optimize(self):
         self.core.break_realtime()
@@ -436,6 +527,7 @@ class Electron(HasEnvironment):
 
         if self.load_dac:
             self.kernel_load_dac()
+
         
         
         for k in range(self.update_cycle):
@@ -655,13 +747,8 @@ class Electron(HasEnvironment):
     #     self.zotino0.load()
     #     print("Loaded dac voltages")
 
-
-
-import vxi11
-import matplotlib.pyplot as plt
-
 class rigol():
-    def __init__(self,ip=113,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=-5,amplitude_ej=20,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
+    def __init__(self,ip=113,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=0,amplitude_ej=-20,phase=270,period_ej=1000.E-9,sampling_time=2.E-9):
         # self.sampling_time = sampling_time # 
         
         # initial phase != 0, voltage 0 ~ -20 V, need to manually adjust and see on the scope or AWG
@@ -715,6 +802,46 @@ class rigol():
         # inst.write("OUTPUT2 ON")
         return
 
+class RS():
+    def __init__(self, sampling_time=0):
+        self.inst = vxi11.Instrument('TCPIP::192.168.169.101::INSTR')
+        print(self.inst.ask('*IDN?'))
+
+    def run(self, freq, power):
+        self.freq = freq
+        self.power = power
+        inst = self.inst
+        # inst.write("OUTPut OFF")
+        # Channel 1
+        # print(inst.ask(":OUTPut:IMPedance?"))
+        inst.write("SOURce:FREQuency: MODE CW")
+        inst.write("SOURce:FREQuency {:.9f}".format(self.freq))
+        inst.write("SOURce:POWer:POWer {:.3f}".format(self.power))
+        inst.write('SOURce:MOD:ALL:STAT ON')
+        inst.write("OUTPut ON")
+        #print(inst.ask("OUTPUT?"))
+        return 
+
+    # def stop(self):
+    #     inst = self.inst
+    #     inst.write('OUTPut OFF')
+    #     inst.write('SOURce:MOD:ALL:STAT OFF')
+
+
+
+
+'''
+rs = RS()
+frequencies = np.arange(66, 77, 0.1) * 1E6
+amp_trapfreq = -20.0
+U2 = -0.7
+Prf = +2.5
+load_time = 200 E-6
+wait_time = 4000E-6
+for freq_trapfreq in frequencies:
+    rs.run(freq_trapfreq,amp_trapfreq)
+'''
+
 
 # Creating tab widgets
 class MyTabWidget(HasEnvironment,QWidget):
@@ -752,6 +879,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tab4 = QWidget()
         self.tab5 = QWidget()
         self.tab6 = QWidget()
+        self.tab7 = QWidget()
         self.tabs.resize(300, 150)
   
         # Add tabs
@@ -760,6 +888,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tabs.addTab(self.tab4, "Main Experiment") # This tab could mutate dac_voltage, parameters, flags dataset and run_self_updated
         self.tabs.addTab(self.tab1, "ELECTRODES") # This tab could mutate dac_voltage datasets and update voltages (not integrated)
         self.tabs.addTab(self.tab5, "DEVICES")
+        self.tabs.addTab(self.tab7, "RS")
         self.tabs.addTab(self.tab6, "Cryostat")
     
           
@@ -1045,34 +1174,39 @@ class MyTabWidget(HasEnvironment,QWidget):
 
         self.lifetime_button = QPushButton('Run Lifetime Optimize', self)
         self.lifetime_button.clicked.connect(self.on_lifetime_optimize_click)
-        grid4.addWidget(self.lifetime_button, 11, 8)
+        grid4.addWidget(self.lifetime_button, 12, 8)
 
 
         # add pulse counting button, this is to set run_mode = 0 and run the kernel pulse counting
         self.pc_button = QPushButton('Run Pulse Counting', self)
         self.pc_button.clicked.connect(self.on_pulse_counting_click)
-        grid4.addWidget(self.pc_button, 12, 8)
+        grid4.addWidget(self.pc_button, 12, 9)
 
 
         # add ROI counting button, this is to set run_mode = 1 and run the kernel ROI counting
         self.rc_button = QPushButton('Run ROI Counting', self)
         self.rc_button.clicked.connect(self.on_roi_counting_click)
-        grid4.addWidget(self.rc_button, 13, 8)
+        grid4.addWidget(self.rc_button, 13, 9)
+
+        # add ROI counting button, this is to set run_mode = 1 and run the kernel ROI counting
+        self.rc_button = QPushButton('Run ROI with trap freq', self)
+        self.rc_button.clicked.connect(self.on_roi_trap_freq_click)
+        grid4.addWidget(self.rc_button, 14, 9)
 
         # add hist counting button, this is to set run_mode = 2 and run the kernel histogram counting
         self.hc_button = QPushButton('Run Hist Counting', self)
         self.hc_button.clicked.connect(self.on_hist_counting_click)
-        grid4.addWidget(self.hc_button, 14, 8)
+        grid4.addWidget(self.hc_button, 13, 8)
 
         # add hist counting button, this is to set run_mode = 2 and run the kernel histogram counting
         self.op_button = QPushButton('Run Outputting', self)
         self.op_button.clicked.connect(self.on_outputting_click)
-        grid4.addWidget(self.op_button, 15, 8)
+        grid4.addWidget(self.op_button, 14, 8)
 
         # add lifetime measurement button, this is to set run_mode = 4 and run the kernel histogram counting
         self.lm_button = QPushButton('Lifetime Measurement', self)
         self.lm_button.clicked.connect(self.on_lifetime_measurement_click)
-        grid4.addWidget(self.lm_button, 16, 8)
+        grid4.addWidget(self.lm_button, 15, 9)
 
         # add stop button, this is to terminate the current run program on the kernel and reset the dataset
         t_button = QPushButton('Terminate', self)
@@ -1116,10 +1250,54 @@ class MyTabWidget(HasEnvironment,QWidget):
         self.tab5.setLayout(grid5)
 
 
+        '''
+        RS
+        '''
+        grid6 = QGridLayout() #make grid layout
+        
+        self.device_parameter_list_RS = []  
+        # rigol_PARAMETERS = ['Pulse width (ns):', 'Pulse delay (ns):','Offset (V):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):']
+        RS_PARAMETERS = ['Frequency:', 'Amplitude:'] # make it to be less confusing
+        RS_DEFAULTS = [1e6, -20]
+        self.rs_param = RS_DEFAULTS
+
+        for i in range(len(RS_PARAMETERS)):  
+            spin = QtWidgets.QSpinBox(self)
+            spin.setRange(-1E6,1E9)
+            spin.setSingleStep(10)
+            spin.setValue(RS_DEFAULTS[i]) # set default values
+            grid6.addWidget(spin,i+11,1,1,1)
+            self.device_parameter_list_RS.append(spin)
+            label = QLabel('    '+RS_PARAMETERS[i], self)
+            grid6.addWidget(label,i+11,0,1,1)
+          
+        #spacing
+        label_gap = QLabel('', self)
+        grid6.addWidget(label_gap,0,2,1,2)
+        
+        # add extraction button
+        v_button = QPushButton('Run RS Extraction', self)
+        v_button.clicked.connect(self.on_run_RS_click)
+        grid6.addWidget(v_button, 8+2, 8)
+
+        grid6.setRowStretch(4, 1)
+        self.tab7.setLayout(grid6)
+
+
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)        
         return
+
+    def on_run_RS_click(self):
+        self.rs = RS()
+        self.dev_list = []
+        for m in self.device_parameter_list_RS:
+            text = m.text() or "0"
+            self.dev_list.append(float(text))
+        freq = self.dev_list[0]
+        amp = self.dev_list[1]
+        self.rs.run(freq, amp)
 
     def on_run_rigol_extraction_click(self):
         self.dev_list = []
@@ -1171,7 +1349,7 @@ class MyTabWidget(HasEnvironment,QWidget):
     def on_load_individual_voltage_click(self):
         self.elec_dict = {}
         for e in self.electrode_spin:
-            text = elf.electrode_spin[e].text() or "0"
+            text = self.electrode_spin[e].text() or "0"
             self.elec_dict[e] = float(text)
         
         self.elec_dict["trigger_level"] = self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level")
@@ -1206,6 +1384,10 @@ class MyTabWidget(HasEnvironment,QWidget):
 
     def on_lifetime_optimize_click(self):
         self.HasEnvironment.set_dataset("optimize.flag.run_mode",5, broadcast=True, persist=True)
+        self.on_run_click()
+
+    def on_roi_trap_freq_click(self):
+        self.HasEnvironment.set_dataset("optimize.flag.run_mode",6, broadcast=True, persist=True)
         self.on_run_click()
 
 
@@ -1273,7 +1455,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         # DATASETS
         e_headers = ["b0","bl1","bl2","bl3","bl4","bl5","br1","br2","br3","br4","br5","t0","tl1","tl2","tl3","tl4","tl5","tr1","tr2","tr3","tr4","tr5"]
         m_headers = ["Grid","Ex","Ey","Ez","U1","U2","U3","U4","U5","U6"]
-        p_headers = ["number_of_datapoints", "number_of_repetitions","pulse_counting_time","t_acquisition","t_delay","t_load","t_wait","trigger_level"]
+        p_headers = ["number_of_datapoints", "number_of_repetitions","pulse_counting_time","t_acquisition","t_delay","t_load","t_wait","trigger_level","start_freq","end_freq","freq_step","RF_amplitude"]
         results = ["count_ROI","count_tot"]
         all_params = e_headers+m_headers+p_headers
 
@@ -1659,7 +1841,7 @@ class Worker(QObject):
         self.finished.emit()
 
 
-class Electron_GUI_3layer(Electron, EnvExperiment):
+class Electron_GUI_3layer_with_trap_freq(Electron, EnvExperiment):
     def build(self):
         Electron.build(self)
 
@@ -1669,6 +1851,7 @@ class Electron_GUI_3layer(Electron, EnvExperiment):
     
     @kernel
     def run(self):
+
         # self.launch_GUI()
         print("Hello World")
 
