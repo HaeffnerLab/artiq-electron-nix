@@ -274,6 +274,96 @@ class _RangeScan(LayoutWidget):
         scanner.setStop(state["stop"]/scale)
         randomize.setChecked(state["randomize"])
 
+class _LogScan(LayoutWidget):
+    def __init__(self, procdesc, state):
+        LayoutWidget.__init__(self)
+
+        scale = procdesc["scale"]
+
+        def apply_properties(widget):
+            widget.setDecimals(procdesc["ndecimals"])
+            if procdesc["global_min"] is not None:
+                widget.setMinimum(procdesc["global_min"]/scale)
+            else:
+                widget.setMinimum(float("-inf"))
+            if procdesc["global_max"] is not None:
+                widget.setMaximum(procdesc["global_max"]/scale)
+            else:
+                widget.setMaximum(float("inf"))
+            if procdesc["global_step"] is not None:
+                widget.setSingleStep(procdesc["global_step"]/scale)
+            if procdesc["unit"]:
+                widget.setSuffix(" " + procdesc["unit"])
+
+        scanner = ScanWidget()
+        disable_scroll_wheel(scanner)
+        self.addWidget(scanner, 0, 0, -1, 1)
+
+        start = ScientificSpinBox()
+        start.setStyleSheet("QDoubleSpinBox {color:blue}")
+        start.setMinimumSize(110, 0)
+        start.setSizePolicy(QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed))
+        disable_scroll_wheel(start)
+        self.addWidget(start, 0, 1)
+
+        npoints = QtWidgets.QSpinBox()
+        npoints.setMinimum(1)
+        npoints.setMaximum((1 << 31) - 1)
+        disable_scroll_wheel(npoints)
+        self.addWidget(npoints, 1, 1)
+
+        stop = ScientificSpinBox()
+        stop.setStyleSheet("QDoubleSpinBox {color:red}")
+        stop.setMinimumSize(110, 0)
+        disable_scroll_wheel(stop)
+        self.addWidget(stop, 2, 1)
+
+        randomize = QtWidgets.QCheckBox("Randomize")
+        self.addWidget(randomize, 3, 1)
+
+        apply_properties(start)
+        start.setPrecision()
+        start.setRelativeStep()
+        apply_properties(stop)
+        stop.setPrecision()
+        stop.setRelativeStep()
+        apply_properties(scanner)
+
+        def update_start(value):
+            state["start"] = value*scale
+            scanner.setStart(value)
+            if start.value() != value:
+                start.setValue(value)
+
+        def update_stop(value):
+            state["stop"] = value*scale
+            scanner.setStop(value)
+            if stop.value() != value:
+                stop.setValue(value)
+
+        def update_npoints(value):
+            state["npoints"] = value
+            scanner.setNum(value)
+            if npoints.value() != value:
+                npoints.setValue(value)
+
+        def update_randomize(value):
+            state["randomize"] = value
+            randomize.setChecked(value)
+
+        scanner.startChanged.connect(update_start)
+        scanner.numChanged.connect(update_npoints)
+        scanner.stopChanged.connect(update_stop)
+        start.valueChanged.connect(update_start)
+        npoints.valueChanged.connect(update_npoints)
+        stop.valueChanged.connect(update_stop)
+        randomize.stateChanged.connect(update_randomize)
+        scanner.setStart(state["start"]/scale)
+        scanner.setNum(state["npoints"])
+        scanner.setStop(state["stop"]/scale)
+        randomize.setChecked(state["randomize"])
+
 
 class _CenterScan(LayoutWidget):
     def __init__(self, procdesc, state):
@@ -372,13 +462,14 @@ class ScanEntry(LayoutWidget):
         self.argument = argument
 
         self.stack = QtWidgets.QStackedWidget()
-        self.addWidget(self.stack, 1, 0, colspan=4)
+        self.addWidget(self.stack, 1, 0, colspan=5)
 
         procdesc = argument["desc"]
         state = argument["state"]
         self.widgets = OrderedDict()
         self.widgets["NoScan"] = _NoScan(procdesc, state["NoScan"])
         self.widgets["RangeScan"] = _RangeScan(procdesc, state["RangeScan"])
+        self.widgets["LogScan"] = _LogScan(procdesc, state["LogScan"])
         self.widgets["CenterScan"] = _CenterScan(procdesc, state["CenterScan"])
         self.widgets["ExplicitScan"] = _ExplicitScan(state["ExplicitScan"])
         for widget in self.widgets.values():
@@ -387,6 +478,7 @@ class ScanEntry(LayoutWidget):
         self.radiobuttons = OrderedDict()
         self.radiobuttons["NoScan"] = QtWidgets.QRadioButton("No scan")
         self.radiobuttons["RangeScan"] = QtWidgets.QRadioButton("Range")
+        self.radiobuttons["LogScan"] = QtWidgets.QRadioButton("Log")
         self.radiobuttons["CenterScan"] = QtWidgets.QRadioButton("Center")
         self.radiobuttons["ExplicitScan"] = QtWidgets.QRadioButton("Explicit")
         scan_type = QtWidgets.QButtonGroup()
@@ -417,6 +509,8 @@ class ScanEntry(LayoutWidget):
             "NoScan": {"value": 0.0, "repetitions": 1},
             "RangeScan": {"start": 0.0, "stop": 100.0*scale, "npoints": 10,
                           "randomize": False},
+            "LogScan": {"start": 0.0, "stop": 100.0*scale, "npoints": 10,
+                          "randomize": False},
             "CenterScan": {"center": 0.*scale, "span": 100.*scale,
                            "step": 10.*scale, "randomize": False},
             "ExplicitScan": {"sequence": []}
@@ -432,6 +526,12 @@ class ScanEntry(LayoutWidget):
                     state[ty]["value"] = default["value"]
                     state[ty]["repetitions"] = default["repetitions"]
                 elif ty == "RangeScan":
+                    state[ty]["start"] = default["start"]
+                    state[ty]["stop"] = default["stop"]
+                    state[ty]["npoints"] = default["npoints"]
+                    state[ty]["randomize"] = default["randomize"]
+                    state[ty]["seed"] = default["seed"]
+                elif ty == "LogScan":
                     state[ty]["start"] = default["start"]
                     state[ty]["stop"] = default["stop"]
                     state[ty]["npoints"] = default["npoints"]

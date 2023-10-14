@@ -114,7 +114,7 @@ device_db["ttl8"] = {
 }
 
 
-device_db["ttl9"] = {
+device_db["ttl_Tickle"] = {
     "type": "local",
     "module": "artiq.coredevice.ttl",
     "class": "TTLOut",

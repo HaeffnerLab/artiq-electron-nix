@@ -16,6 +16,7 @@ yielding the same values each time. Iterating concurrently on the
 same scan object (e.g. via nested loops) is also supported, and the
 iterators are independent from each other.
 """
+import numpy as np
 
 import random
 import inspect
@@ -27,7 +28,7 @@ from artiq.language import units
 
 
 __all__ = ["ScanObject",
-           "NoScan", "RangeScan", "CenterScan", "ExplicitScan",
+           "NoScan", "RangeScan", "LogScan", "CenterScan", "ExplicitScan",
            "Scannable", "MultiScanManager"]
 
 
@@ -98,6 +99,40 @@ class RangeScan(ScanObject):
                 "npoints": self.npoints,
                 "randomize": self.randomize,
                 "seed": self.seed}
+    
+    class LogScan(ScanObject):
+    """A scan object that yields a fixed number of evenly spaced values in log scale in a
+    range. If ``randomize`` is True the points are randomly ordered."""
+    def __init__(self, start, stop, npoints, randomize=False, seed=None):
+        self.start = start
+        self.stop = stop
+        self.npoints = npoints
+        self.randomize = randomize
+        self.seed = seed
+
+        if npoints == 0:
+            self.sequence = []
+        if npoints == 1:
+            self.sequence = [self.start]
+        else:
+            # dx = (stop - start)/(npoints - 1)
+            self.sequence = np.logspace(np.log10(start),np.log10(stop),npoints)
+        if randomize:
+            rng = random.Random(seed)
+            random.shuffle(self.sequence, rng.random)
+
+    def __iter__(self):
+        return iter(self.sequence)
+
+    def __len__(self):
+        return self.npoints
+
+    def describe(self):
+        return {"ty": "LogScan",
+                "start": self.start, "stop": self.stop,
+                "npoints": self.npoints,
+                "randomize": self.randomize,
+                "seed": self.seed}
 
 
 class CenterScan(ScanObject):
@@ -155,6 +190,7 @@ class ExplicitScan(ScanObject):
 _ty_to_scan = {
     "NoScan": NoScan,
     "RangeScan": RangeScan,
+    "LogScan": LogScan,
     "CenterScan": CenterScan,
     "ExplicitScan": ExplicitScan
 }

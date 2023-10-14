@@ -20,7 +20,7 @@ from scipy.optimize import curve_fit
 import vxi11
 import matplotlib.pyplot as plt
 
-
+print:{'DC0': -0.5075085462745209, 'DC1': -4.115645125835921, 'DC2': 0.6052160671822544, 'DC3': -3.8292321930411064, 'DC4': 0.43824986625602186, 'DC5': -4.006012630929934, 'DC6': 0.5381631236942458, 'DC7': -3.9120137594360784, 'DC8': 0.4651545437632938, 'trigger_level': 0.06}
 class Electron(HasEnvironment):
     def build(self):
         self.setattr_device('core')
@@ -28,7 +28,7 @@ class Electron(HasEnvironment):
         self.setattr_device('ttl1')
         self.setattr_device('ttl_MCP_in') # where MCP pulses are being sent in by ttl, connect to Q of threshold detector
         self.setattr_device('ttl8') 
-        self.setattr_device('ttl9') # use this channel to trigger R&S for tickle pulse, connect to R&S
+        self.setattr_device('ttl_Tickle') # use this channel to trigger R&S for tickle pulse, connect to R&S
         self.setattr_device('ttl_Extraction') # use this channel to trigger extraction pulse, connect to RIGOL external trigger
         self.setattr_device("ttl_TimeTagger") # time tagger start click
         self.setattr_device("ttl12")
@@ -69,8 +69,8 @@ class Electron(HasEnvironment):
         self.set_dataset(key="optimize.parameter.number_of_datapoints", value = np.int(100000), broadcast=True, persist=True) # number of datapoints
         self.set_dataset(key="optimize.parameter.bins", value = np.int(50), broadcast=True, persist=True) # number of bins in the histogram
         self.set_dataset(key="optimize.parameter.update_cycle", value = np.int(10), broadcast=True, persist=True) # number of datapoints per update cycle
+        self.set_dataset(key="optimize.parameter.V_grid", value = np.int(10), broadcast=True, persist=True) # number of datapoints per update cycle
         '''
-        
 
         self.wait_times = [ 1.000,2.154,4.641,10.000,21.544,46.415,100.000,215.443,464.158,1000.000,10000.0]
         # self.wait_times = [1.00000000e+00, 1.83298071e+00, 3.35981829e+00, 6.15848211e+00,1.12883789e+01, 2.06913808e+01, 3.79269019e+01, 6.95192796e+01,1.27427499e+02, 2.33572147e+02, 4.28133240e+02, 7.84759970e+02,1.43844989e+03, 2.63665090e+03, 4.83293024e+03, 8.85866790e+03,1.62377674e+04, 2.97635144e+04, 5.45559478e+04, 1.00000000e+05]
@@ -102,14 +102,14 @@ class Electron(HasEnvironment):
         self.controlled_electrodes = ["DC0","DC1","DC2","DC3","DC4","DC5","DC6","DC7","DC8","trigger_level"]
         self.controlled_multipoles = ["Ex","Ey","Ez","U1","U2","U3","U4","U5"]
 
-        self.controlled_parameters = ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints","bins","update_cycle"]
+        self.controlled_parameters = ["t_load","t_wait","t_delay","t_acquisition","pulse_counting_time","trigger_level","number_of_repetitions","number_of_datapoints","bins","update_cycle","V_grid"]
         
 
         self.old_c_file = False
-        self.c_file_csv = '/home/electron/artiq-nix/electron/flipped_Electron3dTrap_200um_v6_cfile.csv'
+        self.c_file_csv = '/home/electron/artiq-nix/electron/flipped_Electron3dTrap_200um_v6_cfile_grid.csv'
         
         self.controlled_multipoles_dict = {"Ex":'Ex:', "Ey":'Ey:', "Ez":'Ez:', "U1":'U1:', "U2":'U2:', "U3":'U3:', "U4":'U4:', "U5":'U5:'}
-        self.controlled_parameters_dict = {"t_load":'Load time (us):', "t_wait":'Wait time (us):', "t_delay":'Delay time (ns):',"t_acquisition":'Acquisition time(ns):' , "pulse_counting_time":'Pulse counting time (ms):',"trigger_level":'Trigger level (V):',"number_of_repetitions":'# Repetitions:', "number_of_datapoints":'# Datapoints:', "bins":'# Bins:',"update_cycle":'# Update cycles:'}
+        self.controlled_parameters_dict = {"t_load":'Load time (us):', "t_wait":'Wait time (us):', "t_delay":'Delay time (ns):',"t_acquisition":'Acquisition time(ns):' , "pulse_counting_time":'Pulse counting time (ms):',"trigger_level":'Trigger level (V):',"number_of_repetitions":'# Repetitions:', "number_of_datapoints":'# Datapoints:', "bins":'# Bins:',"update_cycle":'# Update cycles:',"V_grid": "V gird (V)"}
         self.controlled_electrodes_dict = ["DC0","DC1","DC2","DC3","DC4","DC5","DC6","DC7","DC8","trigger_level"]
         self.ne = int(len(self.controlled_electrodes)) # number of electrodes
         
@@ -208,6 +208,7 @@ class Electron(HasEnvironment):
         number_of_datapoints_index = self.parameter_name_list.index("number_of_datapoints")
         pulse_counting_time_index = self.parameter_name_list.index("pulse_counting_time")
         
+        
 
         t_load = np.int32(self.parameter_value_list[t_load_index])
         t_wait = np.int32(self.parameter_value_list[t_wait_index])
@@ -216,6 +217,7 @@ class Electron(HasEnvironment):
         number_of_repetitions = np.int32(self.parameter_value_list[number_of_repetitions_index])
         number_of_datapoints = np.int32(self.parameter_value_list[number_of_datapoints_index])
         pulse_counting_time = np.int32(self.parameter_value_list[pulse_counting_time_index])
+        
        
 
         self.ordered_parameter_list = [t_load,t_wait,t_delay,t_acquisition,number_of_repetitions,number_of_datapoints,pulse_counting_time]
@@ -237,6 +239,7 @@ class Electron(HasEnvironment):
         f = '/home/electron/artiq-nix/electron/zotino_calibration_3dtrap.txt'
         tmp = np.loadtxt(f) # = np.array([y0,slope])
         self.dac_calibration_fit = tmp 
+        self.dac_manual_offset = [0.,0.,-0.002,0.,0.002,0.,-0.003,0.,0.,-0.001,0.,0.,0.,0.,-0.002,0.,0.001,0.01,0.,0.,0.,0.,0.,0.005,0.003,0.]
 
     def set_dac_voltages(self):
         #,dac_vs):
@@ -291,8 +294,9 @@ class Electron(HasEnvironment):
             delay(500*us)
             m = self.dac_calibration_fit[1][self.dac_pins[i]]
             b = self.dac_calibration_fit[0][self.dac_pins[i]]
-            self.zotino0.write_dac(self.dac_pins[i],self.dac_pins_voltages[i]/m)
-            self.zotino0.write_offset(self.dac_pins[i],-b/m)
+            self.zotino0.write_dac(self.dac_pins[i],(self.dac_pins_voltages[i]+b)/m - self.dac_manual_offset[self.dac_pins[i]])
+            # self.zotino0.write_dac(self.dac_pins[i],self.dac_pins_voltages[i]/m)
+            # self.zotino0.write_offset(self.dac_pins[i],-b/m)
         for pin in self.gnd:
             delay(500*us)
             self.zotino0.write_dac(pin,0.0)
@@ -303,21 +307,22 @@ class Electron(HasEnvironment):
         print("Loaded dac voltages")
 
 
-    @ kernel
+    
     def set_individual_electrode_voltages(self,e):
         
-
-        self.core.reset()
-        self.zotino0.init()
-        self.core.break_realtime() 
-        for key in e:
-            delay(500*us)
-            m = self.dac_calibration_fit[1][self.pin_matching[key]]
-            b = self.dac_calibration_fit[0][self.pin_matching[key]]
-            self.zotino0.write_dac(self.pin_matching[key],e[key]/m)
-            self.zotino0.write_offset(self.pin_matching[key],-b/m)    
-        self.zotino0.load()
-        print("Loaded dac voltages")
+        # self.core.reset()
+        # self.zotino0.init()
+        # self.core.break_realtime()
+        self.set_dac_voltages() 
+        # for key in e:
+        #     delay(500*us)
+        #     m = self.dac_calibration_fit[1][self.pin_matching[key]]
+        #     b = self.dac_calibration_fit[0][self.pin_matching[key]]
+        #     self.zotino0.write_dac(self.pin_matching[key],(e[key]+b)/m)
+        #     # self.zotino0.write_dac(self.pin_matching[key],e[key]/m)
+        #     # self.zotino0.write_offset(self.pin_matching[key],-b/m)    
+        # self.zotino0.load()
+        # print("Loaded dac voltages")
 
 
     @ kernel
@@ -358,10 +363,10 @@ class Electron(HasEnvironment):
                     with parallel:
                         self.ttl_390.off()
                         # delay(1500*ns) # get rid of the photo diode fall time
-                        self.ttl9.on()  
+                        self.ttl_Tickle.on()  
                     delay(t_wait*us)
                     with parallel:
-                        self.ttl9.off()
+                        self.ttl_Tickle.off()
                         self.ttl_Extraction.pulse(2*us)
                         self.ttl_TimeTagger.pulse(2*us)
                     # delay(1*us)
@@ -390,10 +395,10 @@ class Electron(HasEnvironment):
                     delay(t_load*us)
                     with parallel:
                         self.ttl_390.off()
-                        self.ttl9.on()
+                        self.ttl_Tickle.on()
                     delay(t_wait*us)
                     with parallel:
-                        self.ttl9.off()
+                        self.ttl_Tickle.off()
                         self.ttl_Extraction.pulse(2*us)
                         self.ttl_TimeTagger.pulse(2*us)
                         with sequential:
@@ -439,10 +444,10 @@ class Electron(HasEnvironment):
                         delay(t_load*us)
                         with parallel:
                             self.ttl_390.off()
-                            self.ttl9.on()
+                            self.ttl_Tickle.on()
                         delay(wait_times[n]*us)
                         with parallel:
-                            self.ttl9.off()
+                            self.ttl_Tickle.off()
                             self.ttl_Extraction.pulse(2*us)
                             self.ttl_TimeTagger.pulse(2*us)
                             with sequential:
@@ -591,10 +596,10 @@ class Electron(HasEnvironment):
                     delay(t_load*us)
                     with parallel:
                         self.ttl_390.off()
-                        self.ttl9.on()
+                        self.ttl_Tickle.on()
                     delay(t_wait*us)
                     with parallel:
-                        self.ttl9.off()
+                        self.ttl_Tickle.off()
                         self.ttl_Extraction.pulse(2*us)
                         self.ttl_TimeTagger.pulse(2*us)
                         with sequential:
@@ -1131,7 +1136,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             text = self.electrode_spin[e].text() or "0"
             self.elec_dict[e] = float(text)
         
-        self.elec_dict["trigger_level"] = self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level")
+        # self.elec_dict["trigger_level"] = self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level")
         print(self.elec_dict)
         # # #after adjusting self.e order, same as pin order: [ bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,..,tr5,b0(grid),t0]
         self.mutate_dataset_electrode()
@@ -1143,7 +1148,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             text = self.electrode_spin[e].text() or "0"
             self.elec_dict[e] = float(text)
         
-        self.elec_dict["trigger_level"] = self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level")
+        # self.elec_dict["trigger_level"] = self.HasEnvironment.get_dataset(key="optimize.parameter.trigger_level")
         print(self.elec_dict)
         # # #after adjusting self.e order, same as pin order: [ bl1,...,bl5,br1,...,br5,tl1,...,tl5,tr1,..,tr5,b0(grid),t0]
         self.mutate_dataset_electrode()
@@ -1267,10 +1272,12 @@ class MyTabWidget(HasEnvironment,QWidget):
        
         
         if not self.old_c_file:
+            tmp = {}
             df = pd.read_csv(self.c_file_csv,index_col = 0)
             voltages = pd.Series(np.zeros(len(self.controlled_electrodes)-1),index = df.index.values)
+            grid_m = {'C': 1.781389e-02,'Ey': -4.649592e-06,'Ez': 9.989530e-02,'Ex': 4.148890e-06,'U3': 4.179541e-07,'U4':2.342674e-05,'U2': 1.304532e-01,'U5': 2.279447e-05,'U1': 6.951562e-07}
             # grid_m = {'C': 0.019940897983726433,'Ey': -3.360905574255682e-05,'Ez': 0.00022449376590844223,'Ex': 0.06399536424651765,'U3': 0.13434433573433666,'U4': 0.0011390387152830977,'U2': 0.03015271954151855,'U5': -0.021575389610886914,'U1': 0.050389617844847405}
-            # V_grid = self.mul_dict["Grid"]
+            V_grid = self.HasEnvironment.get_dataset(key="optimize.parameter.V_grid")
             # print("V_grid:",V_grid)
             # for m in self.controlled_multipoles:   
             #     if m == "Grid":
@@ -1283,19 +1290,20 @@ class MyTabWidget(HasEnvironment,QWidget):
                 if m == "Grid":
                     pass
                 else:
-                    # self.mul_dict[m] = self.mul_dict[m] - grid_m[m]*V_grid
-                    voltages += df[m] * self.mul_dict[m]
+                    tmp[m] = self.mul_dict[m] - grid_m[m]*V_grid
+                    voltages += df[m] * tmp[m]
+            print("Corrected Multipoles:",tmp)
             self.elec_dict = voltages.to_dict()
             self.elec_dict["trigger_level"] = self.parameter_dict["trigger_level"]
-            for e in self.elec_dict:
-                self.elec_dict[e] = round(self.elec_dict[e],3)    
+            # for e in self.elec_dict:
+            #     self.elec_dict[e] = round(self.elec_dict[e],3)    
             print(self.elec_dict)
 
             for e in self.controlled_electrodes:
                 if e == "trigger_level":
                     pass
                 else:
-                    self.electrode_labels[e].setText(str(round(self.elec_dict[e],3)))      
+                    self.electrode_labels[e].setText(str(round(self.elec_dict[e],4)))      
             self.mutate_dataset_electrode()
 
 
