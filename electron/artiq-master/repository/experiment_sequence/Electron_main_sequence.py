@@ -11,7 +11,6 @@ class Main_sequence(DAC):
         super().build()
         pulse_sequence.pulse_sequence.build(self)
         start_devices.Devices.build(self)
-        
 
         self.setattr_device("ccb")
         # self.setattr_argument("output_pulse", BooleanValue(default = True), group = "Main sequence")
@@ -24,6 +23,7 @@ class Main_sequence(DAC):
         start_devices.Devices.start_rigol(self)
 
         msm = MultiScanManager(
+            ("pulse_delay_ej", self.pulse_delay_ej_Scan),
             ("t_load", self.t_load_Scan),
             ("t_wait", self.t_wait_Scan),
             ("U2", self.U2_Scan),
@@ -56,6 +56,7 @@ class Main_sequence(DAC):
 
             self.run_seq()
             print("done scan No.", count)
+            
         print("Finished scan")
 
     

@@ -51,7 +51,7 @@ class DAC(EnvExperiment):
         if self.multipole_control:
             dac_vs = self.update_multipoles()
             dac_vs["DC0"] += self.DC0_bias # with DC0 bias voltage
-            print(dac_vs)
+            # print(dac_vs)
         else:
             for e in self.pin_matching:
                 dac_vs[e] = getattr(self,e)
@@ -84,7 +84,7 @@ class DAC(EnvExperiment):
         if not self.compensate_grid:
             df = pd.read_csv(self.c_file_csv,index_col = 0)
             voltages = pd.Series(np.zeros(len(self.pin_matching.keys())-len(self.excess_e)),index = df.index.values)
-            print("Multipoles:",dac_ms)
+            # print("Multipoles:",dac_ms)
             for m in self.controlled_multipoles:   
                 voltages += df[m] * dac_ms[m]
             dac_vs = voltages.to_dict()
@@ -92,7 +92,7 @@ class DAC(EnvExperiment):
                 dac_vs[e] = getattr(self,e)
             # for e in dac_vs:
             #     dac_vs[e] = round(dac_vs[e],3)    
-            print(dac_vs)
+            # print(dac_vs)
             return dac_vs
 
         else:
@@ -106,8 +106,8 @@ class DAC(EnvExperiment):
             for e in self.excess_e:
                 dac_vs[e] = getattr(self,e)
             
-            print("Corrected Multipoles:",corrected_m)
-            print(dac_vs)
+            # print("Corrected Multipoles:",corrected_m)
+            # print(dac_vs)
             return dac_vs
             
 

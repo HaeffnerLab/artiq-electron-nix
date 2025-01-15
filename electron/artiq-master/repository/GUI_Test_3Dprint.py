@@ -31,8 +31,10 @@ class Electron(HasEnvironment):
         self.setattr_device('ttl_Tickle') # use this channel to trigger R&S for tickle pulse, connect to R&S
         self.setattr_device('ttl_Extraction') # use this channel to trigger extraction pulse, connect to RIGOL external trigger
         self.setattr_device("ttl_TimeTagger") # time tagger start click
+
         self.setattr_device("ttl12")
         self.setattr_device("ttl13")
+        self.setattr_device("ttl20")
         self.setattr_device("ttl_390") # use this channel to trigger AOM, connect to switch near VCO and AOM
         # self.setattr_device('scheduler') # scheduler used
         self.setattr_device("sampler0")
@@ -236,10 +238,10 @@ class Electron(HasEnvironment):
     
     def loadDACoffset(self):
         # create list of lines from dataset
-        f = '/home/electron/artiq-nix/electron/zotino_calibration_3dtrap.txt'
+        f = '/home/electron/artiq-nix/electron/zotino_calibration/zotino_calibration_20241114.txt'
         tmp = np.loadtxt(f) # = np.array([y0,slope])
         self.dac_calibration_fit = tmp 
-        self.dac_manual_offset = [0.,0.,-0.002,0.,0.002,0.,-0.003,0.,0.,-0.001,0.,0.,0.,0.,-0.002,0.,0.001,0.01,0.,0.,0.,0.,0.,0.005,0.003,0.]
+        # self.dac_manual_offset = [0.,0.,-0.002,0.,0.002,0.,-0.003,0.,0.,-0.001,0.,0.,0.,0.,-0.002,0.,0.001,0.01,0.,0.,0.,0.,0.,0.005,0.003,0.]
 
     def set_dac_voltages(self):
         #,dac_vs):
@@ -294,9 +296,9 @@ class Electron(HasEnvironment):
             delay(500*us)
             m = self.dac_calibration_fit[1][self.dac_pins[i]]
             b = self.dac_calibration_fit[0][self.dac_pins[i]]
-            self.zotino0.write_dac(self.dac_pins[i],(self.dac_pins_voltages[i]+b)/m - self.dac_manual_offset[self.dac_pins[i]])
-            # self.zotino0.write_dac(self.dac_pins[i],self.dac_pins_voltages[i]/m)
-            # self.zotino0.write_offset(self.dac_pins[i],-b/m)
+            # self.zotino0.write_dac(self.dac_pins[i],(self.dac_pins_voltages[i]+b)/m - self.dac_manual_offset[self.dac_pins[i]])
+            self.zotino0.write_dac(self.dac_pins[i],self.dac_pins_voltages[i]/m)
+            self.zotino0.write_offset(self.dac_pins[i],-b/m)
         for pin in self.gnd:
             delay(500*us)
             self.zotino0.write_dac(pin,0.0)
@@ -369,6 +371,9 @@ class Electron(HasEnvironment):
                         self.ttl_Tickle.off()
                         self.ttl_Extraction.pulse(2*us)
                         self.ttl_TimeTagger.pulse(2*us)
+                        with sequential:
+                            delay(560*ns) # 570
+                            self.ttl20.pulse(2*us)
                     # delay(1*us)
                     delay(t_delay*ns)
 
@@ -650,7 +655,7 @@ class Electron(HasEnvironment):
     #     print("Loaded dac voltages")
 
 class rigol():
-    def __init__(self,ip=113,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=0,amplitude_ej=-20,phase=0,period_ej=1000.E-9,sampling_time=2.E-9):
+    def __init__(self,ip=115,pulse_width_ej=800.E-9, pulse_delay_ej=2.E-9,offset_ej=0,amplitude_ej=-20,phase=0,period_ej=1000.E-9,sampling_time=2.E-9):
         # self.sampling_time = sampling_time # 
         
         # initial phase != 0, voltage 0 ~ -20 V, need to manually adjust and see on the scope or AWG
@@ -934,7 +939,7 @@ class MyTabWidget(HasEnvironment,QWidget):
             if m == 'Grid':
                 spin.setRange(-1000,3000)
             else:
-                spin.setRange(-10,10)
+                spin.setRange(-100,100)
             spin.setSingleStep(0.01)
             spin.setValue(self.default_multipoles[m])
             grid4.addWidget(spin,i,8,1,1)
@@ -1111,7 +1116,7 @@ class MyTabWidget(HasEnvironment,QWidget):
         #uncomment
         # self.rigol101 =  rigol(101,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
 
-        self.rigol113 =  rigol(113,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
+        self.rigol113 =  rigol(115,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase,period_ej,sampling_time)
 
         #uncomment
         # self.rigol101.run()

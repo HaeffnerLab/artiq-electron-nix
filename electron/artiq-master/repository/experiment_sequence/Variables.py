@@ -22,7 +22,14 @@ class Variables(EnvExperiment):
                                         ndecimals = 0, global_step = 1, global_min = 2, global_max = 1E6),
                                         group = "Scan", tooltip = "[us] | wait time between the 390 off and extraction on")
         
-    
+    def build_rigol(self):
+        self.pulse_delay_ej = 100.
+        
+        self.setattr_argument("pulse_delay_ej" + "_Scan",
+                              Scannable(default = [NoScan(self.pulse_delay_ej), RangeScan(start = 20, stop = 200, npoints = 181)],
+                                        ndecimals = 2, global_step = 0.01, global_min = -30, global_max = 1000),
+                                        group = "Scan", tooltip = "[ns] | ejectrion pulse delay")
+        
     def build_load_DAC(self):
 
         ### multipoles
@@ -80,7 +87,8 @@ class Variables(EnvExperiment):
                                         ndecimals = 3, global_step = .001, global_min = -0.5, global_max = 0.5),
                                         group = "DC.multipole", tooltip = "U5 (V2/mm2)")
 '''
-        
+    
+
         
 
 

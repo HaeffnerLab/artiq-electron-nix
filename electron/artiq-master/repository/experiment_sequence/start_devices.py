@@ -11,6 +11,7 @@ class Devices(EnvExperiment):
         self.setattr_device('core')
 
         Constants.Constants.build_rigol(self)
+        Variables.Variables.build_rigol(self)
     
     def run(self):
         self.core.reset()
@@ -25,7 +26,7 @@ class Devices(EnvExperiment):
         phase_ej = self.phase_ej
         period_ej = self.period_ej*1e-9
         sampling_time_ej = self.sampling_time_ej*1e-9
-        self.rigol113 =  rigol(113,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase_ej,period_ej,sampling_time_ej)
+        self.rigol113 =  rigol(115,pulse_width_ej,pulse_delay_ej,offset_ej,amplitude_ej,phase_ej,period_ej,sampling_time_ej)
         self.rigol113.run()
         
     

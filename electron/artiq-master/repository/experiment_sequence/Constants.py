@@ -47,7 +47,7 @@ class Constants(EnvExperiment):
         # rigol_PARAMETERS = ['Ejection pulse width (ns):', 'Pulse delay (ns):','Offset (V)(= -Amplitude/2):',  'Amplitude (V):', 'Phase:','Burst period (ns):','Sampling time (ns):'] # make it to be less confusing
         # rigol_DEFAULTS = [100, 100, -5, 10, 0,1000,2]
         self.setattr_argument("pulse_width_ej", NumberValue(default = 100, ndecimals = 0, step = 1), group = "Rigol", tooltip = "[ns] | ejectrion pulse width")
-        self.setattr_argument("pulse_delay_ej", NumberValue(default = 100, ndecimals = 0, step = 1), group = "Rigol", tooltip = "[ns] | ejectrion pulse delay")
+        # self.setattr_argument("pulse_delay_ej", NumberValue(default = 100, ndecimals = 0, step = 1), group = "Rigol", tooltip = "[ns] | ejectrion pulse delay")
         self.setattr_argument("offset_ej", NumberValue(default = -5, ndecimals = 1, step = .1), group = "Rigol", tooltip = "[V] | (-Amplitude/2)")
         self.setattr_argument("amplitude_ej", NumberValue(default = 10, ndecimals = 1, step = .1), group = "Rigol", tooltip = "[V] | ejectrion pulse amplitude")
         self.setattr_argument("phase_ej", NumberValue(default = 0, ndecimals = 0, step = 1), group = "Rigol", tooltip = "[ ] | ejectrion pulse phase")

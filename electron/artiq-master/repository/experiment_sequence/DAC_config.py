@@ -25,7 +25,7 @@ class DAC_config(EnvExperiment):
         # self.grid = False
         # grid multipole for 1V
 
-        self.grid_m = {'C': 1.781389e-02,'Ey': -4.649592e-06,'Ez': 9.989530e-02,'Ex': 4.148890e-06,'U3': 4.179541e-07,'U4':2.342674e-05,'U2': 1.304532e-01,'U5': 2.279447e-05,'U1': 6.951562e-07}
+        self.grid_m = {'C': 1.781389e-02,'Ey': -4.649592e-06,'Ez': 9.989530e-02,'Ex': 4.148890e-06,'U3': 4.179541e-07,'U4':2.342674e-05,'U2': -1,'U5': 2.279447e-05,'U1': 6.951562e-07}
         # list of excess electrodes which is not included in the cfile, in this case it's the threshold voltage
         self.excess_e = ["trigger_level"]
         # c file in csv format
@@ -49,7 +49,10 @@ class DAC_config(EnvExperiment):
     
     def loadDACoffset(self):
         # calibration file, = np.array([y0,slope])
-        f = '/home/electron/artiq-nix/electron/zotino_calibration_3dtrap.txt'
+        # f = '/home/electron/artiq-nix/electron/zotino_calibration_3dtrap.txt'
+        f = '/home/electron/artiq-nix/electron/zotino_calibration/zotino_calibration_20241114.txt'
         tmp = np.loadtxt(f)
         self.dac_calibration_fit = tmp 
-        self.dac_manual_offset = [0.,0.,-0.002,0.,0.002,0.,-0.003,0.,0.,-0.001,0.,0.,0.,0.,-0.002,0.,0.001,0.01,0.,0.,0.,0.,0.,0.005,0.003,0.]
+        # self.dac_manual_offset = [0.,0.,-0.002,0.,0.002,0.,-0.003,0.,0.,-0.001,0.,0.,0.,0.,-0.002,0.,0.001,0.01,0.,0.,0.,0.,0.,0.005,0.003,0.]
+        self.dac_manual_offset = np.zeros(32)
+    

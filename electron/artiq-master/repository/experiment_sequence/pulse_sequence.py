@@ -14,6 +14,7 @@ class pulse_sequence(EnvExperiment):
         self.setattr_device("ttl_TimeTagger") # time tagger start click
         self.setattr_device("ttl_390") # use this channel to trigger AOM, connect to switch near VCO and AOM
         self.setattr_device('ttl_Tickle') # use this channel to trigger R&S for tickle pulse, connect to R&S
+        self.setattr_device("ttl20") # use this ttl to trigger the RF switch to pulse the trap drive RF during extraction
 
         # self.setattr_device('scheduler') # scheduler used
         # self.setattr_device("sampler0")
@@ -52,6 +53,9 @@ class pulse_sequence(EnvExperiment):
                     self.ttl_Tickle.off()
                     self.ttl_Extraction.pulse(2*us)
                     self.ttl_TimeTagger.pulse(2*us)
+                    with sequential:
+                        delay(560*ns) # 570
+                        self.ttl20.pulse(2*us)
 
                 delay(t_manual_delay*us)
         
