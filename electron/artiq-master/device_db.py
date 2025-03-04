@@ -308,7 +308,7 @@ device_db["urukul0_ch0"] = {
     }
 }
 
-device_db["urukul0_ch1"] = {
+device_db["dds_tickle"] = {
     "type": "local",
     "module": "artiq.coredevice.ad9910",
     "class": "AD9910",

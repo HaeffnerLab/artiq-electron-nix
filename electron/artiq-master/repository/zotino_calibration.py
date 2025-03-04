@@ -16,7 +16,7 @@ class zotino_calibrator(EnvExperiment):
         self.setattr_device("zotino0")  
         self.setattr_device("ttl18")
         self.setattr_argument('voltage',NumberValue(default=1,unit='V',scale=1,ndecimals=2,step=1))
-        self.setattr_argument('pin',NumberValue(default=0,unit=' ',scale=1,ndecimals=0, step=1))
+        self.setattr_argument('zotino_channel',NumberValue(default=0,unit=' ',scale=1,ndecimals=0, step=1))
         self.setattr_argument("voltage_scan", BooleanValue(default=True))
         
     def prepare(self):
@@ -25,11 +25,9 @@ class zotino_calibrator(EnvExperiment):
         # self.Vs = [-6.5,-6.0,-5.5,-5.0,-4.5,-4.0,-3.5,-3.0,-2.5,-2.0,-1.5,-1.0,-0.5,0.0,0.5,1.0, 1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0,5.5,6.0,6.5]
         # self.Vs = [-1.50000000e+00, -1.40000000e+00, -1.30000000e+00, -1.20000000e+00,-1.10000000e+00, -1.00000000e+00, -9.00000000e-01, -8.00000000e-01,-7.00000000e-01, -6.00000000e-01, -5.00000000e-01, -4.00000000e-01,-3.00000000e-01, -2.00000000e-01, -1.00000000e-01,  1.33226763e-15,1.00000000e-01,  2.00000000e-01,  3.00000000e-01,  4.00000000e-01,5.00000000e-01,  6.00000000e-01,  7.00000000e-01,  8.00000000e-01,9.00000000e-01,  1.00000000e+00,  1.10000000e+00,  1.20000000e+00,1.30000000e+00,  1.40000000e+00,  1.50000000e+00]
         # self.Vs = [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2] 
-        self.Vs = [-2.00000000e-01, -1.80000000e-01, -1.60000000e-01, -1.40000000e-01,
-       -1.20000000e-01, -1.00000000e-01, -8.00000000e-02, -6.00000000e-02,
-       -4.00000000e-02, -2.00000000e-02, -1.11022302e-16,  2.00000000e-02,
-        4.00000000e-02,  6.00000000e-02,  8.00000000e-02,  1.00000000e-01,
-        1.20000000e-01,  1.40000000e-01,  1.60000000e-01,  1.80000000e-01]
+        self.Vs = [-3. , -2.5, -2. , -1.5, -1. , -0.5,  0. ,  0.5,  1. ,  1.5,  2. ,
+        2.5,  3. ]
+
     def run(self):
         # self.loadDACoffset()
         if self.voltage_scan:
@@ -43,12 +41,12 @@ class zotino_calibrator(EnvExperiment):
         self.core.reset()
         self.core.break_realtime()                                          
         self.zotino0.init()
-        for pin in range(32):
+        for zotino_channel in range(32):
             delay(500*us) # avoid RTIO underflow error
-            #if dac_vs[pin] < 10:
-            self.zotino0.write_dac(pin,self.voltage)
+            #if dac_vs[zotino_channel] < 10:
+            self.zotino0.write_dac(zotino_channel,self.voltage)
             #index = 10+int(np.rint(self.voltage))
-            #self.zotino0.write_offset(pin,self.offset[pin][index])    
+            #self.zotino0.write_offset(zotino_channel,self.offset[zotino_channel][index])    
         self.zotino0.load()
         print("done")
         # self.zotino0.write_offset_dacs_mu()
@@ -63,9 +61,9 @@ class zotino_calibrator(EnvExperiment):
             print(self.Vs[i])
             delay(100000*us) # avoid RTIO underflow error
             # print(self.Vs[i])
-            self.zotino0.write_dac(self.pin,self.Vs[i])
+            self.zotino0.write_dac(self.zotino_channel,self.Vs[i])
             # index = 10+int(np.rint(self.Vs[i]))
-            # self.zotino0.write_offset(self.pin,self.offset[self.pin][index])
+            # self.zotino0.write_offset(self.zotino_channel,self.offset[self.zotino_channel][index])
             with parallel:
                 self.zotino0.load()
                 with sequential:
