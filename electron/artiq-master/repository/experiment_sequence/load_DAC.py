@@ -12,7 +12,7 @@ class DAC(EnvExperiment):
         self.setattr_device('core')
         self.setattr_device('zotino0')
 
-        Variables.Variables.build_load_DAC(self)
+        # Variables.Variables.build_load_DAC(self)
         Constants.Constants.build_DAC(self)
     
     def run(self):
@@ -50,7 +50,7 @@ class DAC(EnvExperiment):
 
         if self.multipole_control:
             dac_vs = self.update_multipoles()
-            dac_vs["DC0"] += self.DC0_bias # with DC0 bias voltage
+            # dac_vs["DC0"] += self.DC0_bias # with DC0 bias voltage
             # print(dac_vs)
         else:
             for e in self.pin_matching:
@@ -109,20 +109,7 @@ class DAC(EnvExperiment):
             # print("Corrected Multipoles:",corrected_m)
             # print(dac_vs)
             return dac_vs
-            
-
-
-
-
-
-
-
-
-
-
-
-
-
+        
 
 
 

@@ -11,7 +11,7 @@ class Devices(EnvExperiment):
         self.setattr_device('core')
 
         Constants.Constants.build_rigol(self)
-        Variables.Variables.build_rigol(self)
+        # Variables.Variables.build_rigol(self)
     
     def run(self):
         self.core.reset()

@@ -16,11 +16,11 @@ class pulse_sequence(EnvExperiment):
         self.setattr_device('ttl_Tickle') # use this channel to trigger R&S for tickle pulse, connect to R&S
         self.setattr_device("ttl20") # use this ttl to trigger the RF switch to pulse the trap drive RF during extraction
 
-        # self.setattr_device('scheduler') # scheduler used
+        self.setattr_device('scheduler') # scheduler used
         # self.setattr_device("sampler0")
 
         
-        Variables.Variables.build_pulse_sequence(self)
+        # Variables.Variables.build_pulse_sequence(self)
         Constants.Constants.build(self)
 
     @kernel

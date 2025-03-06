@@ -18,12 +18,13 @@ def print_underflow():
 class dds_test(EnvExperiment):
     def build(self):
          self.setattr_device('core')
-         self.setattr_device('urukul0_ch1')
+        #  self.setattr_device('urukul0_ch1')
          self.setattr_device('ttl20') # where MCP pulses are being sent in by ttl
+        #  self.setattr_device('dds_tickle')
          self.d0 = self.get_device("urukul0_ch0")
-         self.d1 = self.get_device("urukul0_ch1")
-         self.d2 = self.get_device("urukul0_ch2")
-         self.d3 = self.get_device("urukul0_ch3")
+        #  self.d1 = self.get_device("urukul0_ch1")
+        #  self.d2 = self.get_device("urukul0_ch2")
+        #  self.d3 = self.get_device("urukul0_ch3")
          self.setattr_argument('att',NumberValue(default=10,unit='dB',scale=1,ndecimals=0,step=1)) #
          self.setattr_argument('freq',NumberValue(default=100,unit='MHz',scale=1,ndecimals=0,step=1)) # 
          self.setattr_device('scheduler') # scheduler used
@@ -39,9 +40,9 @@ class dds_test(EnvExperiment):
         self.core.break_realtime()
         self.d0.cpld.init()
         self.d0.init()
-        self.d1.init()
-        self.d2.init()
-        self.d3.init()
+        # self.d1.init()
+        # self.d2.init()
+        # self.d3.init()
 
         # # This calibration needs to be done only once to find good values.
         # # The rest is happening at each future init() of the DDS.

@@ -26,8 +26,8 @@ class rigol():
         # ###### use channel one to extrac on the bottom two central electrodes
         # waveform_ej = np.zeros(int(self.period_ej/self.sampling_time))
         waveform_ej = np.zeros(500)
-        waveform_ej[:] = 1
-        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = -1
+        waveform_ej[:] = -1
+        waveform_ej[np.int(self.pulse_delay_ej/self.sampling_time):np.int((self.pulse_delay_ej+self.pulse_width_ej)/self.sampling_time)] = 1
         ej_str = ",".join(map(str,waveform_ej))
         # Channel 1
         inst.write(":OUTPut1:LOAD INFinity")
