@@ -19,123 +19,70 @@ class XYPlot(pyqtgraph.PlotWidget):
         super().__init__()
         self.args = args
         self.steps = 0
-        self.latest_x = None  # latest x data array
-        self.latest_y = None  # latest y data array
-        self.first_call = True  # flag to set initial zoom
-        self.setBackground("w")  # white background
-        self.showGrid(x=True, y=True)  # enable grid
+        # Instead of storing a single latest_x/y, we keep a list of datasets.
+        self.datasets = []
+        self.first_call = True  # for initial zoom (not used in append mode)
+        # Dark mode and interpolation flag.
+        self.dark_mode = False  # default light mode
+        self.interpolate = False  # default no interpolation
+        self.update_color_scheme()
+        self.showGrid(x=True, y=True)
         xlabel = getattr(args, 'xlabel', 'X')
         ylabel = getattr(args, 'ylabel', 'Y')
         self.setLabel('bottom', xlabel)
         self.setLabel('left', ylabel)
         self.legend = self.addLegend()
-        self.fit_curves = {}
+        # For cycling colors (following matplotlib default cycle).
+        self.color_cycle = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+                            '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
+                            '#bcbd22', '#17becf']
+        self.next_color_index = 0
+
+    def update_color_scheme(self):
+        """Update the color palette based on dark_mode.
+           Note: The individual dataset colors come from the cycle."""
+        if self.dark_mode:
+            self.setBackground("k")
+            self.getAxis('bottom').setTextPen(pyqtgraph.mkPen("w"))
+            self.getAxis('left').setTextPen(pyqtgraph.mkPen("w"))
+        else:
+            self.setBackground("w")
+            self.getAxis('bottom').setTextPen(pyqtgraph.mkPen("k"))
+            self.getAxis('left').setTextPen(pyqtgraph.mkPen("k"))
+
+    def get_next_color(self):
+        color = self.color_cycle[self.next_color_index]
+        self.next_color_index = (self.next_color_index + 1) % len(self.color_cycle)
+        return color
 
     def keyPressEvent(self, event):
+        # Modified functionality: Zoom to only data points with positive y.
         if event.key() == Qt.Key_F:
-            if self.latest_x is not None and self.latest_y is not None and len(self.latest_x) > 0:
-                x_min = np.min(self.latest_x)
-                x_max = np.max(self.latest_x)
-                y_min = np.min(self.latest_y)
-                y_max = np.max(self.latest_y)
-                self.getViewBox().setRange(xRange=(x_min, x_max), yRange=(y_min, y_max), padding=0.1)
+            # Gather all x and y values from all datasets.
+            all_x = np.hstack([d['x'] for d in self.datasets]) if self.datasets else None
+            all_y = np.hstack([d['y'] for d in self.datasets]) if self.datasets else None
+            if all_x is not None and all_y is not None and len(all_x) > 0:
+                mask = all_y > 0
+                if mask.any():
+                    x_min = np.min(all_x[mask])
+                    x_max = np.max(all_x[mask])
+                    y_min = np.min(all_y[mask])
+                    y_max = np.max(all_y[mask])
+                else:
+                    x_min = np.min(all_x)
+                    x_max = np.max(all_x)
+                    y_min = np.min(all_y)
+                    y_max = np.max(all_y)
+                self.getViewBox().setRange(xRange=(x_min, x_max),
+                                           yRange=(y_min, y_max), padding=0.1)
             event.accept()
         else:
             super().keyPressEvent(event)
 
-    def toggleFit(self, fit_type, update=False):
-        # If updating, remove the old fit curve first.
-        if fit_type in self.fit_curves and update:
-            self.removeItem(self.fit_curves[fit_type]['curve'])
-            self.legend.removeItem(self.fit_curves[fit_type]['label'])
-            del self.fit_curves[fit_type]
-        # If toggling off (and not update), remove the curve.
-        if fit_type in self.fit_curves and not update:
-            self.removeItem(self.fit_curves[fit_type]['curve'])
-            self.legend.removeItem(self.fit_curves[fit_type]['label'])
-            del self.fit_curves[fit_type]
-            return
-
-        if self.latest_x is None or self.latest_y is None:
-            return
-        # Use only points with nonzero y.
-        mask = self.latest_y != 0
-        if not mask.any():
-            return
-        xdata = self.latest_x[mask]
-        ydata = self.latest_y[mask]
-
-        # --- Apply user-specified fitting range if available ---
-        options = None
-        parent = self.parent()  # MainWidget is the parent
-        if parent is not None and hasattr(parent, 'fitOptionsWidget'):
-            options = parent.fitOptionsWidget.getOptions()
-        if options:
-            r_start, r_end = options.get('range', (None, None))
-            if r_start is not None and r_end is not None:
-                r_start = int(r_start)
-                r_end = int(r_end)
-                if r_start < 0: r_start = 0
-                # When r_end is -1, interpret it as all data.
-                if r_end == -1 or r_end >= len(xdata):
-                    r_end = len(xdata) - 1
-                if r_start <= r_end:
-                    xdata = xdata[r_start:r_end+1]
-                    ydata = ydata[r_start:r_end+1]
-
-        # --- Compute default p0 and then override if user provided an initial guess ---
-        if fit_type == 'exponential decay':
-            def func(x, A, B, C):
-                return A * np.exp(-B * x) + C
-            A0 = max(ydata) - min(ydata)
-            B0 = 1.0
-            C0 = min(ydata)
-            p0 = [A0, B0, C0]
-            eq_str = 'A exp(-B x) + C'
-            color = 'k'
-        elif fit_type == 'lorentzian':
-            def func(x, A, x0, gamma, C):
-                return A / (1 + ((x - x0) / gamma)**2) + C
-            A0 = max(ydata) - min(ydata)
-            x0_0 = xdata[np.argmax(ydata)]
-            gamma0 = (max(xdata) - min(xdata)) / 2
-            C0 = min(ydata)
-            p0 = [A0, x0_0, gamma0, C0]
-            eq_str = 'A/(1+((x-x0)/gamma)**2) + C'
-            color = 'r'
-        elif fit_type == 'gaussian':
-            def func(x, A, mu, sigma, C):
-                return A * np.exp(-((x - mu)**2) / (2 * sigma**2)) + C
-            A0 = max(ydata) - min(ydata)
-            mu0 = xdata[np.argmax(ydata)]
-            sigma0 = (max(xdata) - min(xdata)) / 4
-            C0 = min(ydata)
-            p0 = [A0, mu0, sigma0, C0]
-            eq_str = 'A exp(-((x-mu)**2)/(2 sigma**2)) + C'
-            color = 'g'
-        else:
-            return
-
-        # Override default initial guess if user provided one.
-        if options:
-            initial = options.get('initial_guesses', {}).get(fit_type, None)
-            if initial is not None and len(initial) > 0:
-                p0 = initial
-
-        try:
-            popt, pcov = curve_fit(func, xdata, ydata, p0=p0)
-        except Exception:
-            return
-
-        x_fit = np.linspace(np.min(xdata), np.max(xdata), 200)
-        y_fit = func(x_fit, *popt)
-        param_str = ', '.join([f'{p:.3e}' for p in popt])
-        label_text = f'Fit {eq_str}, \nparams: {param_str}'
-        pen = pyqtgraph.mkPen(color, width=2)
-        curve = self.plot(x_fit, y_fit, pen=pen, name=label_text)
-        self.fit_curves[fit_type] = {'curve': curve, 'label': label_text}
-
-    def data_changed(self, data, mods, title):
+    def append_data(self, data, title):
+        """Append a new dataset to the plot.
+           data: dictionary with keys 'y' and optionally 'x' (each a tuple with the data).
+           title: title string used to label this dataset in legends and fit labels."""
         try:
             y = data['y'][1]
         except KeyError:
@@ -143,8 +90,132 @@ class XYPlot(pyqtgraph.PlotWidget):
         x = data.get('x', (False, None))[1]
         if x is None:
             x = np.arange(len(y))
-        error = data.get('error', (False, None))[1]
-        fit = data.get('fit', (False, None))[1]
+        x = np.array(x)
+        y = np.array(y)
+        color = self.get_next_color()
+        scatter = self.plot(x, y, pen=None, symbol='o', symbolSize=10,
+                            symbolBrush=color)
+        dataset = {'x': x, 'y': y, 'title': title, 'color': color,
+                   'scatter': scatter, 'fits': {}}
+        self.datasets.append(dataset)
+        # If interpolation is enabled, draw a dashed line.
+        if self.interpolate:
+            interp_pen = pyqtgraph.mkPen(color, style=Qt.DashLine, width=2)
+            self.plot(x, y, pen=interp_pen)
+        # Add an entry in the legend.
+        self.legend.addItem(scatter, title)
+
+    def clear_data(self):
+        """Clear all plotted datasets and fit curves."""
+        self.clear()
+        self.datasets = []
+        self.next_color_index = 0
+        # Recreate the legend since clear() wipes it out.
+        self.legend = self.addLegend()
+
+    def toggleFit(self, fit_type, update=False):
+        """For each dataset, add (or remove) a fit curve of the specified type.
+           If update=True, previously computed fit curves are removed and redrawn."""
+        for dataset in self.datasets:
+            # Remove existing fit curve for this type if present.
+            if fit_type in dataset['fits']:
+                self.removeItem(dataset['fits'][fit_type]['curve'])
+                self.legend.removeItem(dataset['fits'][fit_type]['label'])
+                del dataset['fits'][fit_type]
+                if not update:
+                    continue
+
+            xdata = dataset['x']
+            ydata = dataset['y']
+            mask = ydata != 0
+            if not mask.any():
+                continue
+            xdata_fit = xdata[mask]
+            ydata_fit = ydata[mask]
+
+            # Get user-specified options if available.
+            options = None
+            parent = self.parent()
+            if parent is not None and hasattr(parent, 'fitOptionsWidget'):
+                options = parent.fitOptionsWidget.getOptions()
+
+            # Define the fitting function and default initial guess.
+            if fit_type == 'linear':
+                def func(x, A, B):
+                    return A * x + B
+                A0, B0 = 1, 0
+                p0 = [A0, B0]
+                eq_str = 'A x + B'
+            elif fit_type == 'exponential decay':
+                def func(x, A, B, C):
+                    return A * np.exp(-x/B) + C
+                A0 = max(ydata_fit) - min(ydata_fit)
+                B0 = 1e4; C0 = min(ydata_fit)
+                p0 = [A0, B0, C0]
+                eq_str = 'A exp(-x/B/1000) + C'
+            elif fit_type == 'lorentzian':
+                def func(x, A, x0, gamma, C):
+                    return A / (1 + ((x - x0) / gamma)**2) + C
+                A0 = max(ydata_fit) - min(ydata_fit)
+                x0_0 = xdata_fit[np.argmax(ydata_fit)]
+                gamma0 = (max(xdata_fit) - min(xdata_fit)) / 2
+                C0 = min(ydata_fit)
+                p0 = [A0, x0_0, gamma0, C0]
+                eq_str = 'A/(1+((x-x0)/gamma)**2) + C'
+            elif fit_type == 'gaussian':
+                def func(x, A, mu, sigma, C):
+                    return A * np.exp(-((x - mu)**2) / (2 * sigma**2)) + C
+                A0 = max(ydata_fit) - min(ydata_fit)
+                mu0 = xdata_fit[np.argmax(ydata_fit)]
+                sigma0 = (max(xdata_fit) - min(xdata_fit)) / 4
+                C0 = min(ydata_fit)
+                p0 = [A0, mu0, sigma0, C0]
+                eq_str = 'A exp(-((x-mu)**2)/(2 sigma**2)) + C'
+            else:
+                continue
+
+            # Override default initial guess if provided.
+            if options:
+                initial = options.get('initial_guesses', {}).get(fit_type, None)
+                if initial is not None and len(initial) > 0:
+                    p0 = initial
+                start, end = options['range']
+            else: 
+                start, end = 0, -1
+
+            try:
+                if np.max(xdata_fit) > 1e3: 
+                    x_data_scaled = xdata_fit / 1e3
+                popt, pcov = curve_fit(func, x_data_scaled[start:end], ydata_fit[start:end], p0=p0)
+            except Exception:
+                continue
+
+            x_fit = np.linspace(np.min(x_data_scaled), np.max(x_data_scaled), 200)
+            y_fit = func(x_fit, *popt)
+            param_str = ', '.join([f'{p:.3e}' for p in popt])
+            label_text = f'{dataset["title"]}: Fit {eq_str}, params: {param_str}'
+            pen = pyqtgraph.mkPen(dataset['color'], width=2)
+            curve_item = self.plot(x_fit*1e3, y_fit, pen=pen, name=label_text)
+            dataset['fits'][fit_type] = {'curve': curve_item, 'label': label_text}
+            #self.legend.addItem(curve_item, label_text)
+
+    def data_changed(self, data, mods, title):
+        """
+        Modified original data_changed method to append new data (instead of clearing the plot)
+        so that multiple datasets can be plotted continuously.
+        Only data points are appended; fit curves are not updated automatically.
+        """
+        # Use getattr with a fallback to the literal 'y'
+        y_key = getattr(self.args, 'y', 'y')
+        try:
+            y = data[y_key][1]
+        except KeyError:
+            return
+        x = data.get(getattr(self.args, 'x', 'x'), (False, None))[1]
+        if x is None:
+            x = np.arange(len(y))
+        error = data.get(getattr(self.args, 'error', 'error'), (False, None))[1]
+        fit = data.get(getattr(self.args, 'fit', 'fit'), (False, None))[1]
 
         if not len(y) or len(y) != len(x):
             return
@@ -159,38 +230,33 @@ class XYPlot(pyqtgraph.PlotWidget):
             elif len(fit) != len(y):
                 return
 
-        self.clear()
-        self.plot(x, y, pen=None, symbol='o', symbolSize=10, symbolBrush='b')
-        self.setTitle(title)
+        # Append the new dataset without updating fits.
+        x = np.array(x)
+        y = np.array(y)
+        color = self.get_next_color()
+        scatter = self.plot(x, y, pen=None, symbol='o', symbolSize=10,
+                            symbolBrush=color)
+        # Plot error bars if available.
         if error is not None:
             if hasattr(error, '__len__') and not isinstance(error, np.ndarray):
                 error = np.array(error)
-            errbars = pyqtgraph.ErrorBarItem(x=np.array(x), y=np.array(y), height=error)
+            errbars = pyqtgraph.ErrorBarItem(x=x, y=y, height=error)
             self.addItem(errbars)
+        # Plot pre-computed fit if provided.
         if fit is not None:
             xi = np.argsort(x)
-            self.plot(np.array(x)[xi], np.array(fit)[xi])
-        self.latest_x = np.array(x)
-        self.latest_y = np.array(y)
-        
-        if self.first_call:
-            if len(self.latest_x) >= 10:
-                x_initial = self.latest_x[:10]
-                y_initial = self.latest_y[:10]
-                self.getViewBox().setRange(xRange=(np.min(x_initial), np.max(x_initial)),
-                                           yRange=(np.min(y_initial), np.max(y_initial)),
-                                           padding=0.1)
-            self.first_call = False
-        else:
-            nonzero_mask = self.latest_y != 0
-            if nonzero_mask.any():
-                x_nz = self.latest_x[nonzero_mask]
-                y_nz = self.latest_y[nonzero_mask]
-                self.getViewBox().setRange(xRange=(np.min(x_nz), np.max(x_nz)),
-                                           yRange=(np.min(y_nz), np.max(y_nz)),
-                                           padding=0.1)
-        for fit_type in list(self.fit_curves.keys()):
-            self.toggleFit(fit_type, update=True)
+            self.plot(x[xi], np.array(fit)[xi])
+        # Append the new dataset.
+        self.datasets.append({'x': x, 'y': y, 'title': title, 'color': color,
+                              'scatter': scatter, 'fits': {}})
+        self.setTitle(title)
+        # Update view range using all datasets.
+        all_x = np.hstack([d['x'] for d in self.datasets])
+        all_y = np.hstack([d['y'] for d in self.datasets])
+        self.getViewBox().setRange(xRange=(np.min(all_x), np.max(all_x)),
+                                   yRange=(np.min(all_y), np.max(all_y)),
+                                   padding=0.1)
+        # Do not update fits automatically.
 
 # ------------------ Fit Options Widget ------------------
 class FitOptionsWidget(QWidget):
@@ -201,9 +267,11 @@ class FitOptionsWidget(QWidget):
         # Group for Initial Guess Parameters
         guess_group = QGroupBox("Initial Guess Parameters")
         guess_layout = QFormLayout()
+        self.lin_guess = QLineEdit()
         self.exp_guess = QLineEdit()
         self.lorentz_guess = QLineEdit()
         self.gauss_guess = QLineEdit()
+        guess_layout.addRow("Linear (A,B):", self.lin_guess)
         guess_layout.addRow("Exponential decay (A,B,C):", self.exp_guess)
         guess_layout.addRow("Lorentzian (A,x0,gamma,C):", self.lorentz_guess)
         guess_layout.addRow("Gaussian (A,mu,sigma,C):", self.gauss_guess)
@@ -215,11 +283,11 @@ class FitOptionsWidget(QWidget):
         range_layout = QHBoxLayout()
         self.start_index = QSpinBox()
         self.start_index.setMinimum(0)
-        self.start_index.setValue(0)  # default start index 0
+        self.start_index.setValue(0)
         self.start_index.setPrefix("Start: ")
         self.end_index = QSpinBox()
-        self.end_index.setMinimum(-1)  # allow -1 as special value for "all data"
-        self.end_index.setValue(-1)    # default end index -1
+        self.end_index.setMinimum(-999)
+        self.end_index.setValue(-1)
         self.end_index.setPrefix("End: ")
         range_layout.addWidget(self.start_index)
         range_layout.addWidget(self.end_index)
@@ -229,7 +297,6 @@ class FitOptionsWidget(QWidget):
         # Button to apply options and update fits
         self.apply_button = QPushButton("Apply Fit Options")
         layout.addWidget(self.apply_button)
-
         layout.addStretch()
 
     def getOptions(self):
@@ -241,9 +308,12 @@ class FitOptionsWidget(QWidget):
                 return parts if parts else None
             except Exception:
                 return None
+        lin = parse_guess(self.lin_guess.text())
         exp = parse_guess(self.exp_guess.text())
         lorentz = parse_guess(self.lorentz_guess.text())
         gauss = parse_guess(self.gauss_guess.text())
+        if lin is not None:
+            initial_guesses['linear'] = lin
         if exp is not None:
             initial_guesses['exponential decay'] = exp
         if lorentz is not None:
@@ -251,7 +321,6 @@ class FitOptionsWidget(QWidget):
         if gauss is not None:
             initial_guesses['gaussian'] = gauss
         options['initial_guesses'] = initial_guesses
-
         start = self.start_index.value()
         end = self.end_index.value()
         options['range'] = (start, end)
@@ -267,7 +336,6 @@ class VariableSelectionDialog(QDialog):
         self.setWindowTitle("Select Variables")
         self.selected_x = None
         self.selected_y = None
-
         layout = QGridLayout(self)
         layout.addWidget(QLabel("x variable"), 0, 0)
         layout.addWidget(QLabel("y variable"), 0, 1)
@@ -306,39 +374,90 @@ class MainWidget(QWidget):
         main_layout.addLayout(left_panel, stretch=3)
 
         self.tabWidget = QTabWidget()
-        # Tab 1: Fitting Functions (unchanged)
+        # Tab 1: Fitting Functions (with fit type checkboxes and Interpolate toggle).
         fit_tab = QWidget()
         fit_layout = QVBoxLayout(fit_tab)
+        self.cb_interp = QCheckBox('Interpolate')
+        self.cb_lin = QCheckBox('Linear')
         self.cb_exp = QCheckBox('Exponential decay')
         self.cb_lor = QCheckBox('Lorentzian')
         self.cb_gauss = QCheckBox('Gaussian')
+        fit_layout.addWidget(self.cb_interp)
+        fit_layout.addWidget(self.cb_lin)
         fit_layout.addWidget(self.cb_exp)
         fit_layout.addWidget(self.cb_lor)
         fit_layout.addWidget(self.cb_gauss)
+        self.cb_interp.stateChanged.connect(self.toggleInterpolate)
         fit_layout.addStretch()
         self.tabWidget.addTab(fit_tab, 'Fitting functions')
-        # Tab 2: Fit Options (new)
+        # Tab 2: Fit Options
         self.fitOptionsWidget = FitOptionsWidget(self)
         self.tabWidget.addTab(self.fitOptionsWidget, 'Fit Options')
         main_layout.addWidget(self.tabWidget, stretch=1)
 
+        # Dark Mode and Clear controls.
+        controls_layout = QHBoxLayout()
+        self.cb_dark = QCheckBox("Dark Mode")
+        self.cb_dark.stateChanged.connect(self.toggleDarkMode)
+        controls_layout.addWidget(self.cb_dark)
+        self.clearBtn = QPushButton("Clear")
+        self.clearBtn.clicked.connect(self.clearPlot)
+        controls_layout.addWidget(self.clearBtn)
+        left_panel.addLayout(controls_layout)
+
+        self.cb_lin.stateChanged.connect(lambda state: self.onFitToggled('linear', state))
         self.cb_exp.stateChanged.connect(lambda state: self.onFitToggled('exponential decay', state))
         self.cb_lor.stateChanged.connect(lambda state: self.onFitToggled('lorentzian', state))
         self.cb_gauss.stateChanged.connect(lambda state: self.onFitToggled('gaussian', state))
-        # Connect the Apply Fit Options button to update the fitting curves.
         self.fitOptionsWidget.apply_button.clicked.connect(self.updateFitCurves)
+
+    def toggleDarkMode(self, state):
+        dark = (state == Qt.Checked)
+        self.plotWidget.dark_mode = dark
+        self.plotWidget.update_color_scheme()
+        if dark:
+            self.setStyleSheet(
+                "background-color: black; color: white; "
+                "QTabWidget::pane { background: black; } "
+                "QTabBar::tab { background: black; color: white; }"
+            )
+            self.tabWidget.setStyleSheet(
+                "background-color: black; color: white; "
+                "QTabWidget::pane { background: black; } "
+                "QTabBar::tab { background: black; color: white; }"
+            )
+        else:
+            self.setStyleSheet("")
+            self.tabWidget.setStyleSheet("")
+        # Redraw existing datasets (colors remain unchanged).
+        for dataset in self.plotWidget.datasets:
+            dataset['scatter'].setOpts(symbolBrush=dataset['color'])
+
+    def toggleInterpolate(self, state):
+        self.plotWidget.interpolate = (state == Qt.Checked)
+        # For each dataset, replot the interpolated line if needed.
+        for dataset in self.plotWidget.datasets:
+            x = dataset['x']
+            y = dataset['y']
+            if self.plotWidget.interpolate:
+                interp_pen = pyqtgraph.mkPen(dataset['color'], style=Qt.DashLine, width=2)
+                self.plotWidget.plot(x, y, pen=interp_pen)
 
     def onFitToggled(self, fit_type, state):
         self.plotWidget.toggleFit(fit_type)
 
     def updateFitCurves(self):
-        # Update each active fit curve using new options.
+        if self.cb_lin.isChecked():
+            self.plotWidget.toggleFit('linear', update=True)
         if self.cb_exp.isChecked():
             self.plotWidget.toggleFit('exponential decay', update=True)
         if self.cb_lor.isChecked():
             self.plotWidget.toggleFit('lorentzian', update=True)
         if self.cb_gauss.isChecked():
             self.plotWidget.toggleFit('gaussian', update=True)
+
+    def clearPlot(self):
+        self.plotWidget.clear_data()
 
     def show_message(self, title, message):
         msg_box = QMessageBox(self)
@@ -354,17 +473,14 @@ class MainWidget(QWidget):
         file_path = file_dialog.selectedFiles()[0]
         try:
             with h5py.File(file_path, 'r') as file:
-                # We assume the file has a group named 'datasets'
                 dataset_names = list(file['datasets'].keys())
                 data_dict = {name: np.array(file['datasets'][name][()]) for name in dataset_names}
         except Exception as e:
             self.show_message("Error", f"Error reading file: {e}")
             return
-
         if not dataset_names:
             self.show_message("No Datasets", "No datasets found in the file.")
             return
-
         var_dialog = VariableSelectionDialog(data_dict, self)
         if var_dialog.exec_() == QDialog.Accepted:
             x_key = var_dialog.selected_x
@@ -372,16 +488,17 @@ class MainWidget(QWidget):
             new_data = {'y': (True, data_dict[y_key])}
             if x_key:
                 new_data['x'] = (True, data_dict[x_key])
-            title = f"Plot: {x_key} vs {y_key}"
+            title = f"{x_key} vs {y_key}"
+            # Use the data_changed method to add new data.
             self.plotWidget.data_changed(new_data, mods=None, title=title)
 
     def data_changed(self, data, mods, title):
+        # This method simply calls the XYPlot.data_changed() method.
         self.plotWidget.data_changed(data, mods, title)
 
 # --------------------------- Main -----------------------------------
 def main():
     applet = TitleApplet(MainWidget)
-    # Removed x and y command-line datasets.
     applet.add_dataset('error', 'Error bars for each X value', required=False)
     applet.add_dataset('fit', 'Fit values for each X value', required=False)
     try:

@@ -39,7 +39,9 @@ class loading_experiment(DAC):
 
         self.number_of_datapoints = int((self.t_load_stop - self.t_load_start)/self.step_size + 1)
         self.load_times = np.linspace(self.t_load_start, self.t_load_stop, self.number_of_datapoints)
+        np.random.shuffle(self.load_times)
         self.set_dataset('count_load',[-50]*self.number_of_datapoints,broadcast=True)
+        self.counts_tot = [0]*self.number_of_datapoints
         self.set_dataset('count_load_x',self.load_times,broadcast=True)
         self.set_dataset('rid',self.scheduler.rid,broadcast=True)
         print(self.scheduler.rid)
@@ -53,6 +55,54 @@ class loading_experiment(DAC):
         self.load_DAC()
         self.kernel_run_initial()
         self.kernel_run_load_experiment()
+        print("{:d} finished".format(self.scheduler.rid) )
+
+
+
+    @ kernel
+    def kernel_run_load_experiment(self):
+
+        self.core.reset()
+        self.core.break_realtime()
+
+        for k in range(1):
+            for i in range(self.number_of_datapoints):
+                self.core.break_realtime()
+                # t_load = self.step_size*i+self.t_load_start
+                t_load = self.load_times[i]
+                count_tot = 0
+                for j in range(self.n_repetitions):
+                    self.core.break_realtime()
+                    with sequential:
+                        self.ttl_390.on()
+                        delay(t_load*us)
+                        with parallel:
+                            self.ttl_390.off()
+                            self.ttl_Tickle.on()
+                        delay(self.t_wait*us)
+                        with parallel:
+                            self.ttl_Tickle.off()
+                            self.ttl_Extraction.pulse(2*us)
+                            self.ttl_TimeTagger.pulse(2*us)
+                            with sequential:
+                                delay(200*ns)
+                                self.ttl12.pulse(2*us)
+                            with sequential:
+                                delay(self.t_delay*ns)
+                                t_count = self.ttl_MCP_in.gate_rising(self.t_acquisition*ns)
+                        count = self.ttl_MCP_in.count(t_count)
+                        if count > 0:
+                            count = 1
+                        count_tot += count
+                        delay(10*us)
+                # cycle_duration = t_load+self.t_wait+2+self.t_delay/1000+self.time_window_width/1000+1
+                # self.counts_tot[i] += count_tot
+                self.mutate_dataset('count_load',i,count_tot)
+        
+        # for i in range(self.number_of_datapoints):
+            # self.mutate_dataset('count_load',i,self.counts_tot[i])
+
+
 
     @ kernel
     def kernel_run_initial(self):
@@ -61,9 +111,9 @@ class loading_experiment(DAC):
         
         for i in range(self.number_of_datapoints):
             self.core.break_realtime()
-            t_wait = 100
-            t_load = 100
-            n_repetitions = 50000
+            t_wait = 200
+            t_load = 200
+            n_repetitions = 20000
             count_tot = 0
             for j in range(n_repetitions):
                 self.core.break_realtime()
@@ -89,46 +139,6 @@ class loading_experiment(DAC):
                         count = 1
                     count_tot += count
                     delay(10*us)
-
-    @ kernel
-    def kernel_run_load_experiment(self):
-
-        self.core.reset()
-        self.core.break_realtime()
-        
-        for i in range(self.number_of_datapoints):
-            self.core.break_realtime()
-            t_load = self.step_size*i+self.t_load_start
-            count_tot = 0
-            for j in range(self.n_repetitions):
-                self.core.break_realtime()
-                with sequential:
-                    self.ttl_390.on()
-                    delay(t_load*us)
-                    with parallel:
-                        self.ttl_390.off()
-                        self.ttl_Tickle.on()
-                    delay(self.t_wait*us)
-                    with parallel:
-                        self.ttl_Tickle.off()
-                        self.ttl_Extraction.pulse(2*us)
-                        self.ttl_TimeTagger.pulse(2*us)
-                        with sequential:
-                            delay(200*ns)
-                            self.ttl12.pulse(2*us)
-                        with sequential:
-                            delay(self.t_delay*ns)
-                            t_count = self.ttl_MCP_in.gate_rising(self.t_acquisition*ns)
-                    count = self.ttl_MCP_in.count(t_count)
-                    if count > 0:
-                        count = 1
-                    count_tot += count
-                    delay(10*us)
-            # cycle_duration = t_load+self.t_wait+2+self.t_delay/1000+self.time_window_width/1000+1
-            self.mutate_dataset('count_load',i,count_tot)
-
-
-
 
 
 

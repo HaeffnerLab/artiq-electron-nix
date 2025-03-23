@@ -42,6 +42,7 @@ class lifetime_experiment(DAC):
         self.set_dataset('count_lifetime',[-50]*self.number_of_datapoints,broadcast=True)
         # self.wait_times = np.linspace(self.t_wait_start,self.t_wait_stop,self.number_of_datapoints)
         self.wait_times = np.logspace(np.log10(self.t_wait_start),np.log10(self.t_wait_stop),self.number_of_datapoints,base=10.)
+        np.random.shuffle(self.wait_times)
         self.set_dataset('count_lifetime_x',self.wait_times,broadcast=True)
         self.set_dataset('rid',self.scheduler.rid,broadcast=True)
         print(self.scheduler.rid)
@@ -51,8 +52,9 @@ class lifetime_experiment(DAC):
     def run(self):
         start_devices.Devices.start_rigol(self)
         self.load_DAC()
-        self.kernel_run_initial()
+        # self.kernel_run_initial()
         self.kernel_run_lifetime_experiment()
+        print("{:d} finished".format(self.scheduler.rid) )
 
     @ kernel
     def kernel_run_initial(self):
@@ -63,7 +65,7 @@ class lifetime_experiment(DAC):
             self.core.break_realtime()
             t_wait = 100
             t_load = 100
-            n_repetitions = 50000
+            n_repetitions = 10000
             count_tot = 0
             for j in range(n_repetitions):
                 self.core.break_realtime()

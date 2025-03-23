@@ -41,7 +41,7 @@ class tickle_experiment(DAC):
         self.setattr_device("ttl12")
 
     def prepare(self):
-        self.number_of_datapoints = int((self.freq_stop - self.freq_start)/self.step_size + 1)
+        self.number_of_datapoints = int(np.abs(self.freq_stop - self.freq_start)/self.step_size + 1)
         self.trap_freqs = np.linspace(self.freq_start, self.freq_stop, self.number_of_datapoints)
         self.set_dataset('count_tickle',[-50]*self.number_of_datapoints,broadcast=True)
         self.set_dataset('count_tickle_x',self.trap_freqs,broadcast=True)
@@ -54,8 +54,10 @@ class tickle_experiment(DAC):
         
         start_devices.Devices.start_rigol(self)
         self.load_DAC()
-        self.kernel_run_initial()
+        # self.kernel_run_initial()
+        print("start")
         self.kernel_run_tickle_experiment()
+        print("{:d} finished".format(self.scheduler.rid) )
 
     @ kernel
     def kernel_run_initial(self):
@@ -66,7 +68,7 @@ class tickle_experiment(DAC):
             self.core.break_realtime()
             t_wait = 100
             t_load = 100
-            n_repetitions = 50000
+            n_repetitions = 500
             count_tot = 0
             for j in range(n_repetitions):
                 self.core.break_realtime()
