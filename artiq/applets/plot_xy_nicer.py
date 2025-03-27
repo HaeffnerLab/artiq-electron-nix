@@ -66,7 +66,7 @@ class XYPlot(pyqtgraph.PlotWidget):
         if event.key() == Qt.Key_F:
             if (self.latest_x is not None and self.latest_y is not None and len(self.latest_x) > 0):
                 # Zoom to only data points with positive y.
-                if len(np.where(self.latest_y > 0)) > 0:
+                if len(np.where(self.latest_y > 0)[0]) > 0:
                     x_min = np.min(self.latest_x[np.where(self.latest_y > 0)])
                     x_max = np.max(self.latest_x[np.where(self.latest_y > 0)])
                     y_min = np.min(self.latest_y[np.where(self.latest_y > 0)])
@@ -83,9 +83,16 @@ class XYPlot(pyqtgraph.PlotWidget):
             super().keyPressEvent(event)
 
     def toggleFit(self, fit_type, update=False):
+        # If toggling off (and not an update), remove the fit curve.
         if fit_type in self.fit_curves and not update:
-            self.removeItem(self.fit_curves[fit_type]['curve'])
-            self.legend.removeItem(self.fit_curves[fit_type]['label'])
+            # For 'find dips', remove both curve and associated text labels.
+            if fit_type == 'find dips':
+                self.removeItem(self.fit_curves[fit_type]['curve'])
+                for t in self.fit_curves[fit_type]['labels']:
+                    self.removeItem(t)
+            else:
+                self.removeItem(self.fit_curves[fit_type]['curve'])
+                self.legend.removeItem(self.fit_curves[fit_type]['label'])
             del self.fit_curves[fit_type]
             return
 
@@ -97,6 +104,7 @@ class XYPlot(pyqtgraph.PlotWidget):
         xdata = self.latest_x[mask]
         ydata = self.latest_y[mask]
 
+        # ----- Linear Fit -----
         if fit_type == 'linear':
             def func(x, A, B):
                 return A * x + B
@@ -104,14 +112,18 @@ class XYPlot(pyqtgraph.PlotWidget):
             p0 = [A0, B0]
             eq_str = 'A x + B'
             color = self.color_scheme["linear"]
+
+        # ----- Exponential Decay Fit -----
         elif fit_type == 'exponential decay':
             def func(x, A, B, C):
-                return A * np.exp(-B * x) + C
+                return A * np.exp(-x/B/1000) + C
             A0 = max(ydata) - min(ydata)
             B0 = 1.0; C0 = min(ydata)
             p0 = [A0, B0, C0]
-            eq_str = 'A exp(-B x) + C'
+            eq_str = 'A exp(-x/B/1000) + C'
             color = self.color_scheme["exp"]
+
+        # ----- Lorentzian Fit -----
         elif fit_type == 'lorentzian':
             def func(x, A, x0, gamma, C):
                 return A / (1 + ((x - x0)/gamma)**2) + C
@@ -121,6 +133,8 @@ class XYPlot(pyqtgraph.PlotWidget):
             p0 = [A0, x0_0, gamma0, C0]
             eq_str = 'A/(1+((x-x0)/gamma)**2) + C'
             color = self.color_scheme["lor"]
+
+        # ----- Gaussian Fit -----
         elif fit_type == 'gaussian':
             def func(x, A, mu, sigma, C):
                 return A * np.exp(-((x - mu)**2)/(2*sigma**2)) + C
@@ -130,18 +144,79 @@ class XYPlot(pyqtgraph.PlotWidget):
             p0 = [A0, mu0, sigma0, C0]
             eq_str = 'A exp(-((x-mu)**2)/(2 sigma**2)) + C'
             color = self.color_scheme["gauss"]
+
+        # ----- Double Exponential Fit -----
+        elif fit_type == 'double exponential':
+            def func(x, A, B, D, C):
+                return A * np.exp(-x/B/1000) + C * np.exp(-x/D/1000)
+            A0 = max(ydata) - min(ydata)
+            D0 = 30
+            B0 = 10
+            C0 = A0/3
+            p0 = [A0, B0, D0, C0]
+            eq_str = 'A exp(-x/B/1000) + C exp(-x/D/1000)'
+            color = self.color_scheme["exp"]
+
+        # ----- Double Lorentzian Fit -----
+        elif fit_type == 'double lorentzian':
+            def func(x, A1, x01, gamma1, A2, x02, gamma2, C):
+                return (A1 / (1 + ((x - x01)/gamma1)**2) +
+                        A2 / (1 + ((x - x02)/gamma2)**2) + C)
+            amp = max(ydata) - min(ydata)
+            A1_0 = amp / 2
+            A2_0 = amp / 2
+            x01_0 = xdata[np.argmax(ydata)]
+            x_range = np.max(xdata) - np.min(xdata)
+            x02_0 = x01_0 + x_range/4
+            gamma1_0 = x_range / 4
+            gamma2_0 = x_range / 4
+            C0 = min(ydata)
+            p0 = [A1_0, x01_0, gamma1_0, A2_0, x02_0, gamma2_0, C0]
+            eq_str = 'A1/(1+((x-x01)/gamma1)**2) + A2/(1+((x-x02)/gamma2)**2) + C'
+            color = self.color_scheme["lor"]
+
+        # ----- Find Dips -----
+        elif fit_type == 'find dips':
+            # Use a default sliding window of 10 data points.
+            window = 10
+            if window % 2 == 0:
+                window += 1
+            half = window // 2
+            dip_indices = []
+            for i in range(len(ydata)):
+                start_win = max(0, i - half)
+                end_win = min(len(ydata), i + half + 1)
+                if ydata[i] == np.min(ydata[start_win:end_win]):
+                    dip_indices.append(i)
+            if not dip_indices:
+                return
+            # Plot the dips as 'x' markers.
+            curve = self.plot(xdata[dip_indices], ydata[dip_indices],
+                              pen=None, symbol='x', symbolSize=12, symbolBrush='m')
+            # Add text labels for each dip.
+            labels = []
+            for i in dip_indices:
+                text = f"({xdata[i]:.2f}, {ydata[i]:.2f})"
+                t = pyqtgraph.TextItem(text, anchor=(0, 1), color='m')
+                t.setPos(xdata[i], ydata[i])
+                self.addItem(t)
+                labels.append(t)
+            self.fit_curves[fit_type] = {'curve': curve, 'label': 'Dips', 'labels': labels}
+            return
+
         else:
             return
 
         try:
-            popt, pcov = curve_fit(func, xdata, ydata, p0=p0)
+            popt, pcov = curve_fit(func, xdata, ydata, p0=p0,
+                                   xtol=1e-10, ftol=1e-10, maxfev=10000)
         except Exception:
             return
 
         x_fit = np.linspace(np.min(xdata), np.max(xdata), 200)
         y_fit = func(x_fit, *popt)
         param_str = ', '.join([f'{p:.3e}' for p in popt])
-        label_text = f'Fit {eq_str}, \nparams: {param_str}'
+        label_text = f'Fit {eq_str}\nparams: {param_str}'
         pen = pyqtgraph.mkPen(color, width=3)
         curve = self.plot(x_fit, y_fit, pen=pen, name=label_text)
         self.fit_curves[fit_type] = {'curve': curve, 'label': label_text}
@@ -201,6 +276,7 @@ class XYPlot(pyqtgraph.PlotWidget):
                                        yRange=(np.min(y_initial), np.max(y_initial)),
                                        padding=0.1)
             self.first_call = False
+        # Update any active fit curves.
         for fit_type in list(self.fit_curves.keys()):
             self.toggleFit(fit_type, update=True)
 
@@ -217,7 +293,7 @@ class MainWidget(QWidget):
         # Create a right-side vertical layout.
         right_layout = QVBoxLayout()
 
-        # Create a separate widget for Dark Mode button (no title).
+        # Create a separate widget for Dark Mode button.
         dark_widget = QWidget()
         dark_layout = QHBoxLayout(dark_widget)
         dark_layout.setContentsMargins(0, 0, 0, 0)
@@ -237,20 +313,32 @@ class MainWidget(QWidget):
         self.cb_exp = QCheckBox('Exponential decay')
         self.cb_lor = QCheckBox('Lorentzian')
         self.cb_gauss = QCheckBox('Gaussian')
+        # New checkboxes:
+        self.cb_dexp = QCheckBox('Double exponential')
+        self.cb_dlor = QCheckBox('Double lorentzian')
+        self.cb_dips = QCheckBox('Find dips')
+
         fit_layout.addWidget(self.cb_int)
         fit_layout.addWidget(self.cb_lin)
         fit_layout.addWidget(self.cb_exp)
+        fit_layout.addWidget(self.cb_dexp)
         fit_layout.addWidget(self.cb_lor)
         fit_layout.addWidget(self.cb_gauss)
+        fit_layout.addWidget(self.cb_dlor)
+        fit_layout.addWidget(self.cb_dips)
         fit_layout.addStretch()
         self.tabWidget.addTab(fit_tab, 'Fitting functions')
 
         layout.addLayout(right_layout, stretch=1)
 
+        # Connect checkboxes to toggle fits.
         self.cb_lin.stateChanged.connect(lambda state: self.onFitToggled('linear', state))
         self.cb_exp.stateChanged.connect(lambda state: self.onFitToggled('exponential decay', state))
+        self.cb_dexp.stateChanged.connect(lambda state: self.onFitToggled('double exponential', state))
         self.cb_lor.stateChanged.connect(lambda state: self.onFitToggled('lorentzian', state))
         self.cb_gauss.stateChanged.connect(lambda state: self.onFitToggled('gaussian', state))
+        self.cb_dlor.stateChanged.connect(lambda state: self.onFitToggled('double lorentzian', state))
+        self.cb_dips.stateChanged.connect(lambda state: self.onFitToggled('find dips', state))
         self.cb_int.stateChanged.connect(self.toggleInterpolate)
 
     def toggleInterpolate(self, state):
@@ -266,8 +354,6 @@ class MainWidget(QWidget):
         dark = (state == Qt.Checked)
         self.plotWidget.dark_mode = dark
         self.plotWidget.update_color_scheme()
-        # Update the entire GUI's background, including the tab widget,
-        # and manually update the palette for all QCheckBox to ensure white text.
         if dark:
             self.setStyleSheet(
                 "background-color: black; color: white; "
