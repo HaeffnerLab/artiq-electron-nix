@@ -147,13 +147,13 @@ class XYPlot(pyqtgraph.PlotWidget):
 
         # ----- Double Exponential Fit -----
         elif fit_type == 'double exponential':
-            def func(x, A, B, D, C):
+            def func(x, A, B, C, D):
                 return A * np.exp(-x/B/1000) + C * np.exp(-x/D/1000)
             A0 = max(ydata) - min(ydata)
             D0 = 30
-            B0 = 10
+            B0 = 5
             C0 = A0/3
-            p0 = [A0, B0, D0, C0]
+            p0 = [A0, B0, C0, D0]
             eq_str = 'A exp(-x/B/1000) + C exp(-x/D/1000)'
             color = self.color_scheme["exp"]
 

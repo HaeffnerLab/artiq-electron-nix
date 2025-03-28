@@ -171,14 +171,14 @@ class XYPlot(pyqtgraph.PlotWidget):
                 p0 = [A0, B0, C0]
                 eq_str = 'A exp(-x/B/1000) + C'
             elif fit_type == 'double exponential':
-                def func(x, A, q, D, C):
+                def func(x, A, q, C, D):
                     return A * np.exp(-x/(q*D)) + C * np.exp(-x/D)
                 A0 = max(ydata_fit) - min(ydata_fit)
                 D0 = 30
                 B0 = 10
                 q0 = B0 / D0
                 C0 = A0/3
-                p0 = [A0, q0, D0, C0]
+                p0 = [A0, q0, C0, D0]
                 eq_str = 'A exp(-x/B/1000) + C exp(-x/D/1000)'
             elif fit_type == 'lorentzian':
                 def func(x, A, x0, gamma, C):
