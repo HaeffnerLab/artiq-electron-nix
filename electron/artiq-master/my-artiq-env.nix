@@ -23,13 +23,10 @@ in
 
         # The NixOS package collection contains many other packages that you may find
         # interesting for your research. Here are some examples:
-        ps.pandas
+        #ps.pandas
         ps.numpy
-        ps.vxi11
-        #ps.pyvisa
-	#ps.visa
-        #ps.PyQt5
-        ps.scipy
+	#ps.PyQt5
+        #ps.scipy
         #ps.numba
         (ps.matplotlib.override { enableQt = true; })
         #ps.bokeh
@@ -38,7 +35,7 @@ in
       ]))
 
       # List desired non-Python packages here
-      artiq-full.openocd  # needed if and only if flashing boards
+      #artiq-full.openocd  # needed if and only if flashing boards
       # Other potentially interesting packages from the NixOS package collection:
       #pkgs.gtkwave
       #pkgs.spyder
